@@ -1,0 +1,39 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Estado de tu equipo</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.5}
+    .card{border:1px solid #ddd;border-radius:12px;padding:16px;max-width:720px}
+    .muted{color:#666}
+    table{border-collapse:collapse;width:100%}
+    th,td{border-bottom:1px solid #eee;padding:8px;text-align:left}
+    .qr{float:right;margin-left:16px}
+    .status{display:inline-block;padding:4px 10px;border-radius:999px;background:#f2f2f2}
+    @media print {.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="qr" src="./qr.png" width="120" height="120" alt="QR">
+    <h1>Folio {{ order.folio }}</h1>
+    <div class="muted">Cliente: {{ order.device.customer.name }}  Equipo: {{ order.device.brand }} {{ order.device.model }}</div>
+    <p>Estado actual: <span class="status">{{ order.get_status_display }}</span></p>
+    <h3>Historial</h3>
+    <table>
+      <thead><tr><th>Fecha</th><th>Estado</th></tr></thead>
+      <tbody>
+        {% for s in order.history.all %}
+          <tr><td>{{ s.created_at }}</td><td>{{ s.get_status_display }}</td></tr>
+        {% empty %}
+          <tr><td colspan="2">Sin cambios de estado aún.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted">Guarda esta página o el QR para consultar más tarde.</p>
+  </div>
+  <p class="no-print"><button onclick="window.print()">Imprimir</button></p>
+</body>
+</html>

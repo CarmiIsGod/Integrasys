@@ -1,0 +1,64 @@
+﻿from django.db import models
+from django.contrib.auth.models import User
+import uuid
+
+class Customer(models.Model):
+    name = models.CharField(max_length=120)
+    phone = models.CharField(max_length=30, blank=True)
+    email = models.EmailField(blank=True)
+    def __str__(self): return self.name
+
+class Device(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    brand = models.CharField(max_length=60, blank=True)
+    model = models.CharField(max_length=60, blank=True)
+    serial = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    def __str__(self): return f"{self.brand} {self.model} ({self.serial})"
+
+class ServiceOrder(models.Model):
+    class Status(models.TextChoices):
+        NEW = "NEW", "Recibido"
+        IN_REVIEW = "REV", "En revisión"
+        WAITING_PARTS = "WAI", "En espera de repuestos"
+        REQUIRES_AUTH = "AUTH", "Requiere autorización de repuestos"
+        READY_PICKUP = "READY", "Listo para recoger"
+        DELIVERED = "DONE", "Entregado"
+    device = models.ForeignKey(Device, on_delete=models.CASCADE)
+    folio = models.CharField(max_length=20, unique=True)
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW)
+    checkin_at = models.DateTimeField(auto_now_add=True)
+    checkout_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    assigned_to = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    def __str__(self): return f"{self.folio} - {self.device}"
+
+class StatusHistory(models.Model):
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="history")
+    status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices)
+    author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class InventoryItem(models.Model):
+    sku = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    qty = models.IntegerField(default=0)
+    location = models.CharField(max_length=60, blank=True)
+    def __str__(self): return f"{self.sku} - {self.name}"
+
+class InventoryMovement(models.Model):
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
+    delta = models.IntegerField()  # +entrada / -salida
+    reason = models.CharField(max_length=140, blank=True)
+    order = models.ForeignKey(ServiceOrder, null=True, blank=True, on_delete=models.SET_NULL)
+    author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class Notification(models.Model):
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE)
+    kind = models.CharField(max_length=20)     # ready | requires_auth
+    channel = models.CharField(max_length=20)  # email | sms
+    ok = models.BooleanField(default=False)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
