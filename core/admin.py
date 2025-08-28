@@ -3,6 +3,10 @@ from django.utils.html import format_html
 from django.core.mail import send_mail
 from django.conf import settings
 
+import csv
+from django.http import HttpResponse
+from django.utils import timezone
+
 from .models import (
     Customer, Device, ServiceOrder, StatusHistory,
     InventoryItem, InventoryMovement, Notification
@@ -30,6 +34,51 @@ class StatusHistoryInline(admin.TabularInline):
     extra = 0
     readonly_fields = ("status", "author", "created_at")
 
+
+def export_orders_csv(modeladmin, request, queryset):
+    """
+    Exporta a CSV las órdenes seleccionadas desde el admin.
+    No depende de campos exactos; usa getattr para que no truene si cambia un nombre.
+    """
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="service_orders.csv"'
+    w = csv.writer(response)
+
+    w.writerow(["Folio", "Cliente", "Equipo", "Estado", "Fecha ingreso", "Token"])
+
+
+    for o in queryset.select_related("device__customer"):
+        folio = getattr(o, "folio", o.pk)
+        cliente = getattr(getattr(o, "device", None), "customer", None)
+        cliente_name = getattr(cliente, "name", "") if cliente else ""
+
+        device = getattr(o, "device", None)
+        brand = getattr(device, "brand", "")
+        model = getattr(device, "model", "")
+        serial = getattr(device, "serial", "")
+        equipo = f"{brand} {model}".strip()
+        if serial:
+            equipo = f"{equipo} ({serial})".strip()
+
+        estado = str(getattr(o, "status", ""))
+        checkin = getattr(o, "checkin_at", None)
+        token = getattr(o, "token", "")
+
+        def fmt(dt):
+            try:
+                return timezone.localtime(dt).strftime("%Y-%m-%d %H:%M") if dt else ""
+            except Exception:
+                return str(dt) if dt else ""
+
+        w.writerow([folio, cliente_name, equipo, estado, fmt(checkin), token])
+
+    return response
+
+export_orders_csv.short_description = "Exportar órdenes seleccionadas a CSV"
+
+
+
+
 @admin.register(ServiceOrder)
 class ServiceOrderAdmin(admin.ModelAdmin):
     list_display = ("folio", "device", "status", "checkin_at", "public_link")
@@ -37,6 +86,8 @@ class ServiceOrderAdmin(admin.ModelAdmin):
     search_fields = ("folio", "device__serial", "device__customer__name")
     inlines = [StatusHistoryInline]
     readonly_fields = ("token",)
+    
+    actions = [export_orders_csv]
 
     def public_link(self, obj):
         return format_html('<a href="/t/{}/" target="_blank">Ver público</a>', obj.token)
