@@ -85,7 +85,7 @@ class ServiceOrderAdmin(admin.ModelAdmin):
     list_filter = ("status", "checkin_at")
     search_fields = ("folio", "device__serial", "device__customer__name")
     inlines = [StatusHistoryInline]
-    readonly_fields = ("token",)
+    readonly_fields = ("token","folio")
     
     actions = [export_orders_csv]
 
