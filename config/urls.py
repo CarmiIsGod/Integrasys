@@ -5,6 +5,7 @@ from core import views
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
+    path("accounts/login/", RedirectView.as_view(url="/admin/login/", permanent=False)),
     path("admin/", admin.site.urls),
     path("t/<uuid:token>/", views.public_status, name="public_status"),
     path("t/<uuid:token>/qr.png", views.qr, name="qr"),
