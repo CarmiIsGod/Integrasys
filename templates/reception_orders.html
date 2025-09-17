@@ -56,15 +56,6 @@
             <a href="{% url 'public_status' token=o.token %}" target="_blank">Ver público</a>
             |
             <a href="{% url 'receipt_pdf' token=o.token %}" target="_blank">PDF</a>
-            {% for nxt in ALLOWED.o.status %}
-            {% endfor %}
-            {% for nxt in ALLOWED|get_item:o.status %}
-              <form method="post" action="{% url 'change_status' o.pk %}" style="display:inline">
-                {% csrf_token %}
-                <input type="hidden" name="target" value="{{ nxt }}">
-                <button type="submit">{{ o.get_status_display|yesno:" , ," }}</button>
-              </form>
-            {% endfor %}
           </td>
         </tr>
       {% empty %}
@@ -82,12 +73,5 @@
       <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&page={{ page_obj.next_page_number }}">Siguiente →</a>
     {% endif %}
   </div>
-
-  <!-- Filtro ALLOWED en template -->
-  {% comment %} helper para ALLOWED[o.status] {% endcomment %}
-  {% load static %}
-  <script>
-    // no JS necesario, el template usa filtro custom si existe; si no, renderiza links arriba
-  </script>
 </body>
 </html>

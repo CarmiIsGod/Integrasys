@@ -93,27 +93,74 @@ def staff_required(user):
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 def list_orders(request):
-    """Listado interno con búsqueda y paginación."""
-    query = (request.GET.get("q", "") or "").strip()
-    qs = ServiceOrder.objects.select_related(
-        "device", "device__customer"
-    ).order_by("-checkin_at")
+    """Listado interno con búsqueda, filtros por estado/fechas, export CSV y paginación."""
+    q = (request.GET.get("q", "") or "").strip()
+    status = (request.GET.get("status", "") or "").strip()
+    dfrom = (request.GET.get("from", "") or "").strip() 
+    dto   = (request.GET.get("to", "") or "").strip()     
+    export = request.GET.get("export") == "1"
 
-    if query:
+    qs = ServiceOrder.objects.select_related("device", "device__customer").order_by("-checkin_at")
+
+    if q:
         qs = qs.filter(
-            Q(folio__icontains=query)
-            | Q(device__serial__icontains=query)
-            | Q(device__model__icontains=query)
-            | Q(device__customer__name__icontains=query)
+            Q(folio__icontains=q)
+            | Q(device__serial__icontains=q)
+            | Q(device__model__icontains=q)
+            | Q(device__customer__name__icontains=q)
         )
+    if status:
+        qs = qs.filter(status=status)
+
+    tz = timezone.get_current_timezone()
+    if dfrom:
+        try:
+            start = tz.localize(datetime.strptime(dfrom, "%Y-%m-%d"))
+            qs = qs.filter(checkin_at__gte=start)
+        except ValueError:
+            pass
+    if dto:
+        try:
+            end = tz.localize(datetime.strptime(dto, "%Y-%m-%d")) + timedelta(days=1)
+            qs = qs.filter(checkin_at__lt=end)
+        except ValueError:
+            pass
+
+
+    if export:
+        resp = HttpResponse(content_type="text/csv; charset=utf-8")
+        resp["Content-Disposition"] = 'attachment; filename="ordenes.csv"'
+        w = csv.writer(resp)
+        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Link público"])
+        for o in qs:
+            public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
+            w.writerow([
+                o.folio,
+                o.get_status_display(),
+                o.device.customer.name if o.device_id else "",
+                (o.device.brand + " " + o.device.model).strip() if o.device_id else "",
+                o.device.serial if o.device_id else "",
+                timezone.localtime(o.checkin_at).strftime("%Y-%m-%d %H:%M"),
+                timezone.localtime(o.checkout_at).strftime("%Y-%m-%d %H:%M") if o.checkout_at else "",
+                public_url,
+            ])
+        return resp
 
     paginator = Paginator(qs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
-    return render(
-        request,
-        "reception_orders.html",
-        {"page_obj": page_obj, "query": query, "ALLOWED": ALLOWED},
-    )
+
+    context = {
+        "page_obj": page_obj,
+        "query": q,
+        "status": status,
+        "dfrom": dfrom,
+        "dto": dto,
+        "status_choices": ServiceOrder.Status.choices,
+        "ALLOWED": ALLOWED, 
+    }
+    return render(request, "reception_orders.html", context)
+
+
 
 
 @login_required(login_url="/admin/login/")
