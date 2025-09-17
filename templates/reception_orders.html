@@ -57,6 +57,13 @@
             |
             <a href="{% url 'receipt_pdf' token=o.token %}" target="_blank">PDF</a>
             {% if o.whatsapp_link %} | <a href="{{ o.whatsapp_link }}" target="_blank">WhatsApp</a>{% endif %}
+            <form method="post" action="{% url 'add_part' o.pk %}" style="display:inline; margin-left:6px">
+              {% csrf_token %}
+              <input name="sku" placeholder="SKU" size="6" required>
+              <input name="qty" type="number" min="1" value="1" style="width:65px" required>
+              <input name="reason" placeholder="Motivo" size="10">
+              <button type="submit">Usar</button>
+            </form>
 
 
             

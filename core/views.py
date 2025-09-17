@@ -1,4 +1,4 @@
-﻿from django.http import HttpResponse, Http404
+from django.http import HttpResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -17,14 +17,19 @@ from io import BytesIO
 import qrcode
 from datetime import datetime, timedelta
 import csv
-
 import re
 from urllib.parse import quote
 
-
 from .forms import ReceptionForm
-from .models import Customer, Device, ServiceOrder, StatusHistory, Notification
-
+from .models import (
+    Customer,
+    Device,
+    ServiceOrder,
+    StatusHistory,
+    Notification,
+    InventoryItem,
+    InventoryMovement,
+)
 
 
 ALLOWED = {
@@ -36,19 +41,17 @@ ALLOWED = {
     "DONE": [],
 }
 
+
 def build_whatsapp_link(phone: str, text: str) -> str:
-    """Devuelve un wa.me link al número (MX por default) con texto prellenado."""
     digits = re.sub(r"\D", "", phone or "")
     if not digits:
         return ""
-    
     if not digits.startswith("52"):
         digits = "52" + digits
     return f"https://wa.me/{digits}?text={quote(text)}"
 
 
 def public_status(request, token):
-    """Página pública del estado de una orden (por token)."""
     try:
         order = ServiceOrder.objects.select_related(
             "device", "device__customer"
@@ -60,22 +63,19 @@ def public_status(request, token):
 
 
 def qr(request, token):
-    """PNG con el QR a la página pública de la orden (cacheado 1 día)."""
     url = request.build_absolute_uri(reverse("public_status", args=[token]))
     img = qrcode.make(url)
     buf = BytesIO()
     img.save(buf, format="PNG")
     resp = HttpResponse(buf.getvalue(), content_type="image/png")
-    resp["Cache-Control"] = "public, max-age=86400"  # 1 día
+    resp["Cache-Control"] = "public, max-age=86400"
     return resp
 
 
 def receipt_pdf(request, token):
-    """Genera el recibo PDF con QR y datos de la orden. Siempre devuelve HttpResponse."""
     order = get_object_or_404(ServiceOrder, token=token)
     public_url = request.build_absolute_uri(reverse("public_status", args=[token]))
 
-    
     try:
         buf = BytesIO()
         qrcode.make(public_url).save(buf, format="PNG")
@@ -92,7 +92,6 @@ def receipt_pdf(request, token):
     try:
         result = pisa.CreatePDF(html, dest=pdf_io, encoding="utf-8")
         if result.err:
-            
             return HttpResponse(html, content_type="text/html", status=500)
         resp = HttpResponse(pdf_io.getvalue(), content_type="application/pdf")
         resp["Content-Disposition"] = f'inline; filename="recibo-{order.folio}.pdf"'
@@ -108,14 +107,13 @@ def staff_required(user):
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 def list_orders(request):
-    """Listado interno con búsqueda, filtros por estado/fechas, export CSV y paginación."""
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
-    dfrom = (request.GET.get("from", "") or "").strip()  
-    dto = (request.GET.get("to", "") or "").strip()      
+    dfrom = (request.GET.get("from", "") or "").strip()
+    dto   = (request.GET.get("to", "") or "").strip()
     export = request.GET.get("export") == "1"
 
-    qs = ServiceOrder.objects.select_related("device", "device__customer").order_by("-checkin_at")
+    qs = ServiceOrder.objects.select_related("device","device__customer").order_by("-checkin_at")
 
     if q:
         qs = qs.filter(
@@ -127,7 +125,6 @@ def list_orders(request):
     if status:
         qs = qs.filter(status=status)
 
-    
     tz = timezone.get_current_timezone()
     if dfrom:
         try:
@@ -142,12 +139,11 @@ def list_orders(request):
         except ValueError:
             pass
 
-    
     if export:
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp["Content-Disposition"] = 'attachment; filename="ordenes.csv"'
         w = csv.writer(resp)
-        w.writerow(["Folio", "Estado", "Cliente", "Equipo", "Serie", "Check-in", "Check-out", "Link público"])
+        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Link público"])
         for o in qs:
             public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
             w.writerow([
@@ -162,25 +158,20 @@ def list_orders(request):
             ])
         return resp
 
-    
     paginator = Paginator(qs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
 
     for o in page_obj.object_list:
         o.allowed_next = ALLOWED.get(o.status, [])
-    
         public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
-        msg = (
-            f"Hola {o.device.customer.name}, tu orden {o.folio} "
-            f"({o.device.brand} {o.device.model}) está {o.get_status_display()}. "
-            f"Detalle: {public_url}"
-        )
+        if o.status == "READY":
+            base = f"Hola {o.device.customer.name}, tu orden {o.folio} está LISTA para recoger."
+        elif o.status == "DONE":
+            base = f"Hola {o.device.customer.name}, tu orden {o.folio} fue ENTREGADA."
+        else:
+            base = f"Hola {o.device.customer.name}, tu orden {o.folio} está {o.get_status_display()}."
+        msg = f"{base} Detalle: {public_url}"
         o.whatsapp_link = build_whatsapp_link(getattr(o.device.customer, "phone", ""), msg)
-
-
-    
-    for o in page_obj.object_list:
-        o.allowed_next = ALLOWED.get(o.status, [])
 
     context = {
         "page_obj": page_obj,
@@ -198,7 +189,6 @@ def list_orders(request):
 @user_passes_test(staff_required)
 @require_POST
 def change_status(request, pk):
-    """Cambia el estado (validando transiciones), registra historial y notifica por email (READY/DONE)."""
     order = get_object_or_404(ServiceOrder, pk=pk)
     target = request.POST.get("target")
     allowed = ALLOWED.get(order.status, [])
@@ -207,14 +197,11 @@ def change_status(request, pk):
         messages.error(request, "Transición de estado inválida.")
         return redirect("list_orders")
 
-    
     order.status = target
     order.save()
 
-    
     StatusHistory.objects.create(order=order, status=target, author=request.user)
 
-    
     cust_email = (order.device.customer.email or "").strip()
     if cust_email and target in ("READY", "DONE"):
         public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
@@ -228,15 +215,11 @@ def change_status(request, pk):
         )
         try:
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [cust_email], fail_silently=False)
-            Notification.objects.create(
-                order=order, kind="email", channel="status", ok=True,
-                payload={"to": cust_email, "target": target}
-            )
+            Notification.objects.create(order=order, kind="email", channel="status", ok=True,
+                                        payload={"to": cust_email, "target": target})
         except Exception as e:
-            Notification.objects.create(
-                order=order, kind="email", channel="status", ok=False,
-                payload={"to": cust_email, "target": target, "error": str(e)}
-            )
+            Notification.objects.create(order=order, kind="email", channel="status", ok=False,
+                                        payload={"to": cust_email, "target": target, "error": str(e)})
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
@@ -244,12 +227,53 @@ def change_status(request, pk):
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
+@require_POST
+def add_part(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    sku = (request.POST.get("sku") or "").strip()
+    qty_raw = (request.POST.get("qty") or "").strip()
+    reason = (request.POST.get("reason") or "").strip()
+
+    if not sku:
+        messages.error(request, "Captura el SKU.")
+        return redirect("list_orders")
+    try:
+        qty = int(qty_raw)
+    except ValueError:
+        messages.error(request, "Cantidad inválida.")
+        return redirect("list_orders")
+    if qty <= 0:
+        messages.error(request, "La cantidad debe ser mayor a 0.")
+        return redirect("list_orders")
+
+    item = InventoryItem.objects.filter(sku=sku).first()
+    if not item:
+        messages.error(request, f"SKU {sku} no existe.")
+        return redirect("list_orders")
+    if item.qty < qty:
+        messages.error(request, f"Stock insuficiente ({item.qty} disponibles).")
+        return redirect("list_orders")
+
+    InventoryMovement.objects.create(
+        item=item,
+        delta=-qty,
+        reason=reason or f"Consumo en orden {order.folio}",
+        order=order,
+        author=request.user,
+    )
+    item.qty = item.qty - qty
+    item.save()
+
+    messages.success(request, f"Se usó {qty} x {item.name} (SKU {item.sku}) en {order.folio}.")
+    return redirect("list_orders")
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
 def reception_new_order(request):
-    """Recepción: crea/reutiliza cliente y equipo, abre orden, manda correo (si hay) y redirige al estado público."""
     if request.method == "POST":
         form = ReceptionForm(request.POST)
         if form.is_valid():
-            
             name = form.cleaned_data["customer_name"].strip()
             phone = (form.cleaned_data.get("customer_phone") or "").strip()
             email = (form.cleaned_data.get("customer_email") or "").strip()
@@ -258,7 +282,6 @@ def reception_new_order(request):
             serial = (form.cleaned_data.get("serial") or "").strip()
             notes = form.cleaned_data.get("notes") or ""
 
-            
             customer = None
             if email:
                 customer = Customer.objects.filter(email=email).first()
@@ -269,18 +292,19 @@ def reception_new_order(request):
                     name=name, phone=phone or "", email=email or ""
                 )
             else:
-                
                 updated = False
                 if not customer.name and name:
-                    customer.name = name; updated = True
+                    customer.name = name
+                    updated = True
                 if not customer.phone and phone:
-                    customer.phone = phone; updated = True
+                    customer.phone = phone
+                    updated = True
                 if not customer.email and email:
-                    customer.email = email; updated = True
+                    customer.email = email
+                    updated = True
                 if updated:
                     customer.save()
 
-            
             device, _ = Device.objects.get_or_create(
                 customer=customer,
                 serial=serial or "",
@@ -288,21 +312,22 @@ def reception_new_order(request):
             )
             changed = False
             if not device.brand and brand:
-                device.brand = brand; changed = True
+                device.brand = brand
+                changed = True
             if not device.model and model:
-                device.model = model; changed = True
+                device.model = model
+                changed = True
             if notes and (device.notes or "") == "":
-                device.notes = notes; changed = True
+                device.notes = notes
+                changed = True
             if changed:
                 device.save()
 
-            
             order = ServiceOrder.objects.create(
                 device=device, notes=notes, assigned_to=request.user
             )
             StatusHistory.objects.create(order=order, status=order.status, author=request.user)
 
-            
             if email:
                 public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
                 try:
@@ -328,3 +353,4 @@ def reception_new_order(request):
         form = ReceptionForm()
 
     return render(request, "reception_new_order.html", {"form": form})
+

@@ -11,6 +11,6 @@ urlpatterns = [
     path("recepcion/nueva-orden/", views.reception_new_order, name="reception_new_order"),
     path("recepcion/ordenes/", views.list_orders, name="list_orders"),
     path("recepcion/ordenes/<int:pk>/status/", views.change_status, name="change_status"),
+    path("recepcion/ordenes/<int:pk>/part/", views.add_part, name="add_part"),
 ]
-
 
