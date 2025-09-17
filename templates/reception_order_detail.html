@@ -88,6 +88,20 @@
         <div class="muted">No hay transiciones disponibles.</div>
       {% endif %}
     </div>
+
+    <div class="card">
+      <h2>Asignar técnico</h2>
+      <form method="post" action="{% url 'assign_tech' order.pk %}">
+        {% csrf_token %}
+        <select name="user_id" required>
+          <option value="">-- Selecciona técnico --</option>
+          {% for u in staff_users %}
+            <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Asignar</button>
+      </form>
+    </div>
   </div>
 
   <div class="row" style="margin-top:12px">
@@ -142,4 +156,3 @@
   </div>
 </body>
 </html>
-

@@ -10,6 +10,7 @@ from django.template.loader import render_to_string
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.conf import settings
+from django.contrib.auth.models import User
 
 from xhtml2pdf import pisa
 import base64
@@ -112,6 +113,7 @@ def list_orders(request):
     dfrom = (request.GET.get("from", "") or "").strip()
     dto   = (request.GET.get("to", "") or "").strip()
     export = request.GET.get("export") == "1"
+    assignee = (request.GET.get("assignee", "") or "").strip()
 
     qs = ServiceOrder.objects.select_related("device","device__customer").order_by("-checkin_at")
 
@@ -124,6 +126,8 @@ def list_orders(request):
         )
     if status:
         qs = qs.filter(status=status)
+    if assignee:
+        qs = qs.filter(assigned_to_id=assignee)
 
     tz = timezone.get_current_timezone()
     if dfrom:
@@ -181,6 +185,8 @@ def list_orders(request):
         "dto": dto,
         "status_choices": ServiceOrder.Status.choices,
         "ALLOWED": ALLOWED,
+        "assignee": assignee,
+        "staff_users": User.objects.filter(is_staff=True).order_by("username"),
     }
     return render(request, "reception_orders.html", context)
 
@@ -217,6 +223,7 @@ def order_detail(request, pk):
             "public_url": public_url,
             "wa_link": wa_link,
             "status_choices": ServiceOrder.Status.choices,
+            "staff_users": User.objects.filter(is_staff=True).order_by("username"),
         },
     )
 
@@ -231,6 +238,10 @@ def change_status(request, pk):
 
     if target not in allowed:
         messages.error(request, "Transición de estado inválida.")
+        return redirect("list_orders")
+
+    if target == "DONE" and not request.user.is_superuser:
+        messages.error(request, "Solo un superusuario puede marcar como Entregado.")
         return redirect("list_orders")
 
     order.status = target
@@ -259,6 +270,34 @@ def change_status(request, pk):
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+@require_POST
+def assign_tech(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    uid = (request.POST.get("user_id") or "").strip()
+    user = User.objects.filter(pk=uid, is_staff=True).first()
+    if not user:
+        messages.error(request, "Selecciona un técnico válido.")
+        return redirect("order_detail", pk=order.pk)
+    order.assigned_to = user
+    order.save()
+    if user.email:
+        try:
+            public_url = request.build_absolute_uri(reverse("order_detail", args=[order.pk]))
+            send_mail(
+                subject=f"Se te asignó la orden {order.folio}",
+                message=f"Revisa la orden {order.folio}: {public_url}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+    messages.success(request, f"Asignado a {user.get_username()}.")
+    return redirect("order_detail", pk=order.pk)
 
 
 @login_required(login_url="/admin/login/")
