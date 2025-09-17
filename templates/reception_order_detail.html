@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Orden {{ order.folio }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
+    .row{display:flex;gap:16px;flex-wrap:wrap}
+    .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;flex:1;min-width:280px}
+    h1,h2{margin:0 0 8px 0}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left}
+    .muted{color:#6b7280}
+    input,textarea,select,button{padding:8px;border:1px solid #d1d5db;border-radius:8px}
+    button{background:#2563eb;color:#fff;border:0;cursor:pointer}
+    a.btn{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px}
+    .success{background:#16a34a}
+    .secondary{background:#6b7280}
+    .inline{display:inline-block}
+  </style>
+  {% load static %}
+  {% load tz %}
+</head>
+<body>
+
+  <h1>Orden {{ order.folio }}</h1>
+
+  {% if messages %}
+    <div>
+      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="row">
+    <div class="card">
+      <h2>Resumen</h2>
+      <div><b>Estatus:</b> {{ order.get_status_display }}</div>
+      <div><b>Ingreso:</b> {{ order.checkin_at|date:"Y-m-d H:i" }}</div>
+      {% if order.checkout_at %}<div><b>Salida:</b> {{ order.checkout_at|date:"Y-m-d H:i" }}</div>{% endif %}
+      <div class="muted">Asignado a: {{ order.assigned_to|default:"—" }}</div>
+      <div style="margin-top:8px">
+        <a class="btn" href="{{ public_url }}" target="_blank">Ver público</a>
+        <a class="btn secondary" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
+        {% if wa_link %}<a class="btn success" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Cliente & Equipo</h2>
+      <div><b>Cliente:</b> {{ order.device.customer.name }}</div>
+      <div class="muted">
+        Tel: {{ order.device.customer.phone|default:"—" }} ·
+        Email: {{ order.device.customer.email|default:"—" }}
+      </div>
+      <div style="margin-top:6px">
+        <b>Equipo:</b> {{ order.device.brand }} {{ order.device.model }}
+        {% if order.device.serial %}<span class="muted">({{ order.device.serial }})</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px">
+    <div class="card">
+      <h2>Notas internas</h2>
+      <pre style="white-space:pre-wrap">{{ order.notes|default:"(sin notas)" }}</pre>
+      <form method="post" action="{% url 'add_note' order.pk %}" style="margin-top:8px">
+        {% csrf_token %}
+        <textarea name="note" rows="3" placeholder="Agregar nota..." required style="width:100%"></textarea>
+        <div style="margin-top:6px">
+          <button type="submit">Guardar nota</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Cambiar estado</h2>
+      {% if allowed_next %}
+        {% for code,label in status_choices %}
+          {% if code in allowed_next %}
+            <form method="post" action="{% url 'change_status' order.pk %}" class="inline" style="margin-right:6px">
+              {% csrf_token %}
+              <input type="hidden" name="target" value="{{ code }}">
+              <button type="submit">{{ label }}</button>
+            </form>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        <div class="muted">No hay transiciones disponibles.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px">
+    <div class="card">
+      <h2>Refacciones usadas</h2>
+      <form method="post" action="{% url 'add_part' order.pk %}" style="margin-bottom:8px">
+        {% csrf_token %}
+        <input name="sku" placeholder="SKU" required>
+        <input name="qty" type="number" min="1" value="1" style="width:80px" required>
+        <input name="reason" placeholder="Motivo (opcional)">
+        <button type="submit">Usar</button>
+      </form>
+      <table>
+        <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
+        <tbody>
+          {% for m in parts %}
+            <tr>
+              <td class="muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ m.item.sku }}</td>
+              <td>{{ m.item.name }}</td>
+              <td>{{ m.delta }}</td>
+              <td>{{ m.reason }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="muted">(sin consumos)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Historial</h2>
+      <table>
+        <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
+        <tbody>
+          {% for h in history %}
+            <tr>
+              <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ h.get_status_display }}</td>
+              <td>{{ h.author|default:"—" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="muted">(sin historial)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <a class="btn secondary" href="{% url 'list_orders' %}">← Volver al listado</a>
+  </div>
+</body>
+</html>
+

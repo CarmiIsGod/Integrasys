@@ -187,6 +187,42 @@ def list_orders(request):
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
+def order_detail(request, pk):
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("device","device__customer"),
+        pk=pk,
+    )
+    history = order.history.order_by("-created_at")
+    parts = InventoryMovement.objects.filter(order=order).select_related("item").order_by("-created_at")
+    allowed_next = ALLOWED.get(order.status, [])
+
+    public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+    if order.status == "READY":
+        base = f"Hola {order.device.customer.name}, tu orden {order.folio} está LISTA para recoger."
+    elif order.status == "DONE":
+        base = f"Hola {order.device.customer.name}, tu orden {order.folio} fue ENTREGADA."
+    else:
+        base = f"Hola {order.device.customer.name}, tu orden {order.folio} está {order.get_status_display()}."
+    msg = f"{base} Detalle: {public_url}"
+    wa_link = build_whatsapp_link(getattr(order.device.customer, "phone", ""), msg)
+
+    return render(
+        request,
+        "reception_order_detail.html",
+        {
+            "order": order,
+            "history": history,
+            "parts": parts,
+            "allowed_next": allowed_next,
+            "public_url": public_url,
+            "wa_link": wa_link,
+            "status_choices": ServiceOrder.Status.choices,
+        },
+    )
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
 @require_POST
 def change_status(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -223,6 +259,23 @@ def change_status(request, pk):
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+@require_POST
+def add_note(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    text = (request.POST.get("note") or "").strip()
+    if not text:
+        messages.error(request, "Escribe una nota.")
+        return redirect("order_detail", pk=order.pk)
+    stamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
+    author = request.user.get_username()
+    order.notes = (order.notes or "") + ("" if not order.notes else "\n") + f"[{stamp}] {author}: {text}"
+    order.save()
+    messages.success(request, "Nota agregada.")
+    return redirect("order_detail", pk=order.pk)
 
 
 @login_required(login_url="/admin/login/")
@@ -353,4 +406,3 @@ def reception_new_order(request):
         form = ReceptionForm()
 
     return render(request, "reception_new_order.html", {"form": form})
-
