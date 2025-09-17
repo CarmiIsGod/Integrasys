@@ -56,8 +56,10 @@
             <a href="{% url 'public_status' token=o.token %}" target="_blank">Ver público</a>
             |
             <a href="{% url 'receipt_pdf' token=o.token %}" target="_blank">PDF</a>
+            {% if o.whatsapp_link %} | <a href="{{ o.whatsapp_link }}" target="_blank">WhatsApp</a>{% endif %}
 
-            {# --- Botones de cambio de estado permitidos --- #}
+
+            
             {% if o.allowed_next %}
               <div style="margin-top:6px; display:inline-block">
                 {% for code in o.allowed_next %}
@@ -73,7 +75,7 @@
                 {% endfor %}
               </div>
             {% endif %}
-            {# --- fin botones --- #}
+          
           </td>
         </tr>
       {% empty %}
