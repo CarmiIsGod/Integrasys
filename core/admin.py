@@ -81,11 +81,11 @@ export_orders_csv.short_description = "Exportar órdenes seleccionadas a CSV"
 
 @admin.register(ServiceOrder)
 class ServiceOrderAdmin(admin.ModelAdmin):
-    list_display = ("folio", "device", "status", "checkin_at", "public_link")
-    list_filter = ("status", "checkin_at")
-    search_fields = ("folio", "device__serial", "device__customer__name")
+    list_display = ("folio","status","device","checkin_at","checkout_at","assigned_to")
+    search_fields = ("folio","device__serial","device__model","device__customer__name")
+    list_filter = ("status","checkin_at")
     inlines = [StatusHistoryInline]
-    readonly_fields = ("token","folio")
+    readonly_fields = ("folio","token","checkin_at","checkout_at")
     
     actions = [export_orders_csv]
 

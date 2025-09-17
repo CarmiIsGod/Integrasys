@@ -1,23 +1,25 @@
 ﻿from django.db import models
+from django.db import transaction, IntegrityError
+from django.db.models import Q
 from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
 
 
 class Customer(models.Model):
-    name = models.CharField(max_length=120)
-    phone = models.CharField(max_length=30, blank=True)
-    email = models.EmailField(blank=True)
+    name = models.CharField(max_length=120, db_index=True)
+    phone = models.CharField(max_length=30, blank=True, db_index=True)
+    email = models.EmailField(blank=True, db_index=True)
 
     def __str__(self):
         return self.name
 
 
 class Device(models.Model):
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, db_index=True)
     brand = models.CharField(max_length=60, blank=True)
     model = models.CharField(max_length=60, blank=True)
-    serial = models.CharField(max_length=120, blank=True)
+    serial = models.CharField(max_length=120, blank=True, db_index=True)
     notes = models.TextField(blank=True)
 
     def __str__(self):
@@ -40,11 +42,11 @@ class ServiceOrder(models.Model):
         READY_PICKUP = "READY", "Listo para recoger"
         DELIVERED = "DONE", "Entregado"
 
-    device = models.ForeignKey(Device, on_delete=models.CASCADE)
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, db_index=True)
     folio = models.CharField(max_length=20, unique=True, blank=True, editable=False)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW)
-    checkin_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW, db_index=True)
+    checkin_at = models.DateTimeField(auto_now_add=True, db_index=True)
     checkout_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
     assigned_to = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
@@ -54,21 +56,57 @@ class ServiceOrder(models.Model):
 
 
     def save(self, *args, **kwargs):
-        if not self.folio:
-            self.folio = generate_folio()
-        super().save(*args, **kwargs)
+        """Persist with robust folio retry and checkout timestamping.
+
+        - Retries up to 3 times to generate a unique folio if a concurrent
+          insert triggers an IntegrityError on the unique constraint.
+        - When status transitions to DELIVERED and checkout_at is empty,
+          set checkout_at to the current time. Never clear it afterwards.
+        """
+        # Stamp checkout_at when transitioning to DELIVERED (do not unset later)
+        try:
+            old_status = None
+            if self.pk:
+                old = ServiceOrder.objects.only("status", "checkout_at").get(pk=self.pk)
+                old_status = old.status
+            if (
+                old_status is not None
+                and old_status != self.status
+                and self.status == ServiceOrder.Status.DELIVERED
+                and not self.checkout_at
+            ):
+                self.checkout_at = timezone.now()
+        except ServiceOrder.DoesNotExist:
+            pass
+
+        last_error = None
+        for _ in range(3):
+            if not self.folio:
+                self.folio = generate_folio()
+            try:
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+                last_error = None
+                break
+            except IntegrityError as exc:
+                # Likely unique collision on folio due to concurrent save; retry.
+                last_error = exc
+                self.folio = ""
+                continue
+        if last_error:
+            raise last_error
 
 
 class StatusHistory(models.Model):
-    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="history")
-    status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices)
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="history", db_index=True)
+    status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices, db_index=True)
     author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
 
 class InventoryItem(models.Model):
     sku = models.CharField(max_length=40, unique=True)
-    name = models.CharField(max_length=120)
+    name = models.CharField(max_length=120, db_index=True)
     qty = models.IntegerField(default=0)
     location = models.CharField(max_length=60, blank=True)
 
@@ -77,18 +115,23 @@ class InventoryItem(models.Model):
 
 
 class InventoryMovement(models.Model):
-    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, db_index=True)
     delta = models.IntegerField() 
     reason = models.CharField(max_length=140, blank=True)
     order = models.ForeignKey(ServiceOrder, null=True, blank=True, on_delete=models.SET_NULL)
     author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=~Q(delta=0), name="inv_delta_nonzero"),
+        ]
 
 
 class Notification(models.Model):
-    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE)
-    kind = models.CharField(max_length=20)     
-    channel = models.CharField(max_length=20)  
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, db_index=True)
+    kind = models.CharField(max_length=20, db_index=True)     
+    channel = models.CharField(max_length=20, db_index=True)  
     ok = models.BooleanField(default=False)
     payload = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)

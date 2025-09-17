@@ -33,6 +33,9 @@
       </tbody>
     </table>
     <p class="muted">Guarda esta página o el QR para consultar más tarde.</p>
+    <p style="margin-top:12px">
+      <a href="{% url 'receipt_pdf' token=order.token %}" target="_blank">Descargar recibo (PDF)</a>
+    </p>
   </div>
   <p class="no-print"><button onclick="window.print()">Imprimir</button></p>
 </body>

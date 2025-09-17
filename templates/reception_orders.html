@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Órdenes de servicio</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #e5e7eb}
+    th{text-align:left;background:#f9fafb}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    input,select,button{padding:8px;border:1px solid #d1d5db;border-radius:6px}
+    a.btn, button{background:#2563eb;color:#fff;text-decoration:none;border:0}
+    a.btn{display:inline-block;padding:8px 12px;border-radius:6px}
+    .muted{color:#6b7280}
+  </style>
+</head>
+<body>
+  <h1>Órdenes de servicio</h1>
+
+  <form method="get" class="row">
+    <input type="text" name="q" placeholder="Buscar (folio, cliente, modelo, serie)" value="{{ query }}">
+    <select name="status">
+      <option value="">-- Estado --</option>
+      {% for code,label in status_choices %}
+        <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" name="from" value="{{ dfrom }}" title="Desde (fecha de ingreso)">
+    <input type="date" name="to" value="{{ dto }}" title="Hasta (inclusive)">
+    <button type="submit">Filtrar</button>
+    <a href="{% url 'list_orders' %}" class="btn" style="background:#6b7280">Limpiar</a>
+    <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&export=1" class="btn">Exportar CSV</a>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Folio</th>
+        <th>Cliente</th>
+        <th>Equipo</th>
+        <th>Estado</th>
+        <th>Ingreso</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in page_obj.object_list %}
+        <tr>
+          <td>{{ o.folio }}</td>
+          <td>{{ o.device.customer.name }}</td>
+          <td>{{ o.device.brand }} {{ o.device.model }} <span class="muted">({{ o.device.serial }})</span></td>
+          <td>{{ o.get_status_display }}</td>
+          <td>{{ o.checkin_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            <a href="{% url 'public_status' token=o.token %}" target="_blank">Ver público</a>
+            |
+            <a href="{% url 'receipt_pdf' token=o.token %}" target="_blank">PDF</a>
+            {% for nxt in ALLOWED.o.status %}
+            {% endfor %}
+            {% for nxt in ALLOWED|get_item:o.status %}
+              <form method="post" action="{% url 'change_status' o.pk %}" style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="target" value="{{ nxt }}">
+                <button type="submit">{{ o.get_status_display|yesno:" , ," }}</button>
+              </form>
+            {% endfor %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">Sin resultados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="margin-top:12px">
+    {% if page_obj.has_previous %}
+      <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&page={{ page_obj.previous_page_number }}">← Anterior</a>
+    {% endif %}
+    <span class="muted">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&page={{ page_obj.next_page_number }}">Siguiente →</a>
+    {% endif %}
+  </div>
+
+  <!-- Filtro ALLOWED en template -->
+  {% comment %} helper para ALLOWED[o.status] {% endcomment %}
+  {% load static %}
+  <script>
+    // no JS necesario, el template usa filtro custom si existe; si no, renderiza links arriba
+  </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Recibo - {{ order.folio }}</title>
+  <style>
+    body { font-family: DejaVu Sans, sans-serif; font-size: 12pt; color: #000; }
+    h1 { font-size: 16pt; margin: 0 0 6pt 0; }
+    .header { border-bottom: 1px solid #000; padding-bottom: 6pt; margin-bottom: 12pt; }
+    .label { font-weight: bold; }
+    .muted { color: #555; font-size: 10pt; }
+    table { width: 100%; border-collapse: collapse; }
+    td { vertical-align: top; }
+    .qr { text-align: right; }
+    .section { margin-top: 10pt; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Recibo de recepción</h1>
+    <div><span class="label">Folio:</span> {{ order.folio }}</div>
+    <div><span class="label">Fecha:</span> {{ order.checkin_at|date:"Y-m-d H:i" }}</div>
+  </div>
+
+  <table>
+    <tr>
+      <td>
+        <div><span class="label">Cliente:</span> {{ order.device.customer.name }}</div>
+        <div>
+          <span class="label">Equipo:</span>
+          {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}
+        </div>
+      </td>
+      <td class="qr">
+        <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR" width="120" height="120" />
+      </td>
+    </tr>
+  </table>
+
+  <div class="section">
+    <div class="label">Notas:</div>
+    <div>{{ order.notes|default:"" }}</div>
+  </div>
+
+  <p class="muted section">Conserve este recibo.</p>
+</body>
+</html>
