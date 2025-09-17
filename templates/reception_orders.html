@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html> 
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -56,6 +56,24 @@
             <a href="{% url 'public_status' token=o.token %}" target="_blank">Ver público</a>
             |
             <a href="{% url 'receipt_pdf' token=o.token %}" target="_blank">PDF</a>
+
+            {# --- Botones de cambio de estado permitidos --- #}
+            {% if o.allowed_next %}
+              <div style="margin-top:6px; display:inline-block">
+                {% for code in o.allowed_next %}
+                  {% for c,label in status_choices %}
+                    {% if c == code %}
+                      <form method="post" action="{% url 'change_status' o.pk %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="target" value="{{ code }}">
+                        <button type="submit" style="margin-left:6px">{{ label }}</button>
+                      </form>
+                    {% endif %}
+                  {% endfor %}
+                {% endfor %}
+              </div>
+            {% endif %}
+            {# --- fin botones --- #}
           </td>
         </tr>
       {% empty %}

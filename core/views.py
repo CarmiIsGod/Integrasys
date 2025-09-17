@@ -148,6 +148,9 @@ def list_orders(request):
 
     paginator = Paginator(qs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
+    
+    for o in page_obj.object_list:
+        o.allowed_next = ALLOWED.get(o.status, [])
 
     context = {
         "page_obj": page_obj,
