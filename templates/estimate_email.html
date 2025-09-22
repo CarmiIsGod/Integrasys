@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Cotizacion {{ order.folio }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#1f2937;margin:0;padding:24px;background:#f3f4f6}
+    .wrapper{max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,0.08)}
+    h1{font-size:22px;margin:0 0 12px 0}
+    p{margin:0 0 16px 0;line-height:1.5}
+    .button{display:inline-block;padding:12px 20px;border-radius:10px;font-weight:600;color:#ffffff;background:#2563eb;text-decoration:none}
+    .totals{margin:16px 0;font-size:16px}
+    .muted{color:#6b7280;font-size:14px;margin-top:20px}
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Hola {{ customer.name }}</h1>
+    <p>Te compartimos la cotizacion para la orden <strong>{{ order.folio }}</strong>.</p>
+    <p class="totals"><strong>Total estimado:</strong> ${{ total|floatformat:2 }}</p>
+    <p><a class="button" href="{{ public_url }}">Ver y aprobar</a></p>
+    <p>Si tienes alguna duda responde este correo y con gusto te apoyaremos.</p>
+    <p class="muted">Este mensaje fue enviado desde TallerPC.</p>
+  </div>
+</body>
+</html>

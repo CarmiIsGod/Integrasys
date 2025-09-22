@@ -4,49 +4,56 @@
   <meta charset="utf-8">
   <title>Cotizacion {{ order.folio }}</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:720px}
-    h1{margin-bottom:4px}
-    .muted{color:#6b7280}
-    .status{margin:12px 0;padding:12px;border-radius:8px}
-    .status-ok{background:#dcfce7;color:#166534}
-    .status-bad{background:#fee2e2;color:#991b1b}
-    .status-pending{background:#fef3c7;color:#92400e}
-    table{width:100%;border-collapse:collapse;margin-top:16px}
-    th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
-    th{background:#f3f4f6}
-    .totals{margin-top:16px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px auto;max-width:760px;color:#1f2937;background:#f9fafb}
+    h1{margin:0;font-size:28px;color:#111827}
+    .muted{color:#6b7280;font-size:14px;margin-top:4px}
+    .stamp{display:inline-block;margin-top:16px;padding:8px 18px;border-radius:999px;font-size:13px;font-weight:700;border:1px solid transparent}
+    .stamp-ok{background:#dcfce7;color:#166534;border-color:#86efac}
+    .stamp-bad{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
+    .card{margin-top:20px;padding:18px;border-radius:16px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.08)}
+    table{width:100%;border-collapse:collapse;margin-top:18px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,0.08)}
+    th,td{padding:11px 12px;text-align:left;border-bottom:1px solid #e5e7eb}
+    th{background:#eef2ff;font-weight:600;color:#1f2937}
+    tbody tr:last-child td{border-bottom:none}
+    .totals{margin-top:18px;display:grid;gap:8px;font-size:16px}
+    .totals div{display:flex;justify-content:space-between}
+    .actions{margin-top:26px;display:flex;flex-wrap:wrap;gap:12px}
     form.inline{display:inline}
-    button{padding:10px 16px;border:0;border-radius:8px;font-size:15px;cursor:pointer;background:#2563eb;color:#fff}
+    button{padding:12px 20px;border-radius:10px;border:0;font-size:15px;font-weight:600;cursor:pointer;text-transform:none;background:#2563eb;color:#fff;transition:opacity 0.2s ease}
     button.secondary{background:#ef4444}
-    a.link{color:#2563eb}
+    button[disabled]{opacity:0.45;cursor:not-allowed}
+    .help{margin-top:16px;font-size:14px;color:#4b5563}
+    a.link{color:#2563eb;font-weight:600;text-decoration:none}
+    .note{margin-top:20px}
+    .note h2{margin:0 0 6px 0;font-size:16px}
+    .note pre{margin:0;background:#f8fafc;padding:14px;border-radius:10px;font-family:inherit;white-space:pre-wrap}
   </style>
 </head>
 <body>
-  <h1>Cotizacion de orden {{ order.folio }}</h1>
-  <div class="muted">Cliente: {{ order.device.customer.name }}</div>
-  <div class="muted">Equipo: {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+  <header>
+    <h1>Cotizacion {{ order.folio }}</h1>
+    <div class="muted">Cliente: {{ customer.name }}</div>
+    <div class="muted">Equipo: {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+  </header>
 
-  {% if messages %}
-    <div style="margin-top:12px">
-      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
-    </div>
+  {% if approved_at_local %}
+    <div class="stamp stamp-ok">APROBADA el {{ approved_at_local|date:"Y-m-d H:i" }}</div>
+  {% elif declined_at_local %}
+    <div class="stamp stamp-bad">RECHAZADA el {{ declined_at_local|date:"Y-m-d H:i" }}</div>
   {% endif %}
 
-  {% if estimate.approved_at %}
-    <div class="status status-ok">Cotizacion aprobada el {{ estimate.approved_at|date:"Y-m-d H:i" }}</div>
-  {% elif estimate.declined_at %}
-    <div class="status status-bad">Cotizacion rechazada el {{ estimate.declined_at|date:"Y-m-d H:i" }}</div>
-  {% else %}
-    <div class="status status-pending">Revisa la propuesta y elige una opcion.</div>
-  {% endif %}
+  <section class="card">
+    <div><strong>Estado:</strong> {{ status_label }}</div>
+    <div style="margin-top:6px"><strong>Total:</strong> ${{ total|floatformat:2 }}</div>
+  </section>
 
   <table>
     <thead>
       <tr>
-        <th>Descripcion</th>
-        <th style="width:100px">Cantidad</th>
-        <th style="width:120px">Precio unitario</th>
-        <th style="width:120px">Importe</th>
+        <th>Concepto</th>
+        <th style="width:110px">Cantidad</th>
+        <th style="width:130px">Precio unitario</th>
+        <th style="width:130px">Importe</th>
       </tr>
     </thead>
     <tbody>
@@ -57,38 +64,46 @@
         <td>${{ item.unit_price|floatformat:2 }}</td>
         <td>${{ item.line_total|floatformat:2 }}</td>
       </tr>
+      {% empty %}
+      <tr>
+        <td colspan="4">No hay partidas registradas para esta cotizacion.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <div class="totals">
-    <div><b>Subtotal:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
-    <div><b>IVA:</b> ${{ estimate.tax|floatformat:2 }}</div>
-    <div><b>Total:</b> ${{ estimate.total|floatformat:2 }}</div>
+  <div class="card">
+    <div class="totals">
+      <div><span>Subtotal</span><span>${{ subtotal|floatformat:2 }}</span></div>
+      <div><span>IVA</span><span>${{ tax|floatformat:2 }}</span></div>
+      <div><strong>Total</strong><strong>${{ total|floatformat:2 }}</strong></div>
+    </div>
   </div>
 
-  {% if estimate.note %}
-    <div style="margin-top:16px">
-      <b>Nota:</b>
-      <div class="muted" style="white-space:pre-wrap">{{ estimate.note }}</div>
-    </div>
+  {% if note %}
+    <section class="note">
+      <h2>Nota del tecnico</h2>
+      <pre>{{ note }}</pre>
+    </section>
   {% endif %}
 
-  {% if not estimate.approved_at and not estimate.declined_at %}
-    <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
-      <form method="post" action="{% url 'estimate_approve' estimate.token %}" class="inline">
-        {% csrf_token %}
-        <button type="submit">Aprobar cotizacion</button>
-      </form>
-      <form method="post" action="{% url 'estimate_decline' estimate.token %}" class="inline">
-        {% csrf_token %}
-        <button type="submit" class="secondary">Rechazar cotizacion</button>
-      </form>
-    </div>
+  <div class="actions">
+    <form method="post" action="{% url 'estimate_approve' estimate.token %}" class="inline">
+      {% csrf_token %}
+      <button type="submit"{% if not is_pending %} disabled{% endif %}>Aprobar cotizacion</button>
+    </form>
+    <form method="post" action="{% url 'estimate_decline' estimate.token %}" class="inline">
+      {% csrf_token %}
+      <button type="submit" class="secondary"{% if not is_pending %} disabled{% endif %}>Rechazar cotizacion</button>
+    </form>
+  </div>
+
+  {% if not is_pending %}
+    <p class="help">Esta cotizacion ya tiene una respuesta registrada. Puedes volver a consultar el estado de tu servicio en cualquier momento.</p>
   {% else %}
-    <div style="margin-top:20px">
-      <a class="link" href="{% url 'public_status' order.token %}">Ver estado de la orden</a>
-    </div>
+    <p class="help">Selecciona una opcion para confirmar tu decision. Nos pondremos en contacto contigo enseguida.</p>
   {% endif %}
+
+  <p class="help"><a class="link" href="{% url 'public_status' order.token %}">Ver seguimiento de la orden</a></p>
 </body>
 </html>

@@ -704,12 +704,11 @@ def estimate_edit(request, pk):
 @user_passes_test(staff_required)
 @require_POST
 def estimate_send(request, pk):
-    order = get_object_or_404(ServiceOrder, pk=pk)
-    try:
-        estimate = order.estimate
-    except Estimate.DoesNotExist:
-        messages.error(request, "La orden no tiene cotizacion.")
-        return redirect("estimate_edit", pk=order.pk)
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("device__customer"),
+        pk=pk,
+    )
+    estimate, _ = Estimate.objects.get_or_create(order=order)
     if not estimate.items.exists():
         messages.error(request, "Agrega partidas a la cotizacion antes de enviar.")
         return redirect("estimate_edit", pk=order.pk)
@@ -720,30 +719,58 @@ def estimate_send(request, pk):
         return redirect("estimate_edit", pk=order.pk)
 
     public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
-    total_display = format(estimate.total or Decimal("0.00"), ".2f")
-    body = (
-        f"Hola {order.device.customer.name},\n\n"
-        f"Compartimos la cotizacion de la orden {order.folio}.\n"
-        f"Total: ${total_display}.\n\n"
-        f"Revisa y responde aqui: {public_url}\n\n"
-        "Gracias."
+    subtotal = (estimate.subtotal or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    tax = (estimate.tax or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    total = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    items = []
+    for item in estimate.items.order_by("id"):
+        raw_unit_price = item.unit_price or Decimal("0.00")
+        unit_price = raw_unit_price.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        line_total = (raw_unit_price * item.qty).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        items.append(
+            {"description": item.description, "qty": item.qty, "unit_price": unit_price, "line_total": line_total}
+        )
+
+    context = {
+        "order": order,
+        "estimate": estimate,
+        "customer": order.device.customer,
+        "items": items,
+        "subtotal": subtotal,
+        "tax": tax,
+        "total": total,
+        "public_url": public_url,
+    }
+    subject = f"Cotizacion orden {order.folio}"
+    plain_message = (
+        f"Hola {order.device.customer.name},\n"
+        f"Revisa la cotizacion {order.folio}: {public_url}\n"
     )
-    send_mail(
-        subject=f"Cotizacion orden {order.folio}",
-        message=body,
+    html_message = render_to_string("estimate_email.html", context)
+
+    send_count = send_mail(
+        subject=subject,
+        message=plain_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[email],
+        html_message=html_message,
         fail_silently=True,
     )
+    ok = send_count > 0
     Notification.objects.create(
         order=order,
         kind="email",
         channel="estimate_send",
-        ok=True,
+        ok=ok,
         payload={"to": email, "estimate": str(estimate.token), "url": public_url},
     )
-    messages.success(request, "Cotizacion enviada al cliente.")
+
+    if ok:
+        messages.success(request, "Cotizacion enviada al cliente.")
+    else:
+        messages.warning(request, "No se pudo enviar la cotizacion por correo.")
     return redirect("estimate_edit", pk=order.pk)
+
 
 
 def estimate_public(request, token):
@@ -752,25 +779,48 @@ def estimate_public(request, token):
             "order",
             "order__device",
             "order__device__customer",
-        ),
+        ).prefetch_related("items"),
         token=token,
     )
-    items_qs = list(estimate.items.select_related("inventory_item").order_by("id"))
-    items = [
-        {
-            "description": item.description,
-            "qty": item.qty,
-            "unit_price": item.unit_price.quantize(TWO_PLACES),
-            "line_total": (item.unit_price * item.qty).quantize(TWO_PLACES, rounding=ROUND_HALF_UP),
-        }
-        for item in items_qs
-    ]
+
+    subtotal = (estimate.subtotal or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    tax = (estimate.tax or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    total = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+
+    items = []
+    for item in estimate.items.order_by("id"):
+        raw_unit_price = item.unit_price or Decimal("0.00")
+        unit_price = raw_unit_price.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        line_total = (raw_unit_price * item.qty).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        items.append(
+            {
+                "description": item.description,
+                "qty": item.qty,
+                "unit_price": unit_price,
+                "line_total": line_total,
+            }
+        )
+
+    approved_at_local = timezone.localtime(estimate.approved_at) if estimate.approved_at else None
+    declined_at_local = timezone.localtime(estimate.declined_at) if estimate.declined_at else None
+    is_pending = not estimate.approved_at and not estimate.declined_at
+
     context = {
         "estimate": estimate,
         "order": estimate.order,
+        "customer": estimate.order.device.customer,
         "items": items,
+        "subtotal": subtotal,
+        "tax": tax,
+        "total": total,
+        "status_label": _estimate_status_label(estimate),
+        "note": estimate.note or "",
+        "is_pending": is_pending,
+        "approved_at_local": approved_at_local,
+        "declined_at_local": declined_at_local,
     }
     return render(request, "estimate_public.html", context)
+
 
 
 @require_POST
@@ -783,15 +833,11 @@ def estimate_approve(request, token):
         ),
         token=token,
     )
-    if estimate.approved_at:
-        messages.info(request, "La cotizacion ya fue aprobada.")
-        return redirect("estimate_public", token=token)
-    if estimate.declined_at:
-        messages.info(request, "La cotizacion ya fue rechazada anteriormente.")
+    if estimate.approved_at or estimate.declined_at:
         return redirect("estimate_public", token=token)
 
-    order = estimate.order
     now = timezone.now()
+    order = estimate.order
     with transaction.atomic():
         estimate.approved_at = now
         estimate.declined_at = None
@@ -800,34 +846,26 @@ def estimate_approve(request, token):
         order.save(update_fields=["status"])
         StatusHistory.objects.create(order=order, status=order.status, author=None)
 
-    recipients = []
-    if order.assigned_to and order.assigned_to.email:
-        recipients.append(order.assigned_to.email)
-    if not recipients:
-        recipients = list(
-            User.objects.filter(is_staff=True)
-            .exclude(email="")
-            .values_list("email", flat=True)
+    customer_email = (order.device.customer.email or "").strip()
+    if customer_email:
+        total_display = format(
+            (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP),
+            ".2f",
         )
-    if recipients:
-        total_display = format(estimate.total or Decimal("0.00"), ".2f")
-        subject = f"Cotizacion aprobada - {order.folio}"
         body = (
-            f"La cotizacion de la orden {order.folio} fue aprobada el "
-            f"{timezone.localtime(now).strftime('%Y-%m-%d %H:%M')}.\n"
+            "Gracias por aprobar la cotizacion.\n"
             f"Total autorizado: ${total_display}.\n"
         )
-        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, list(recipients), fail_silently=True)
-        Notification.objects.create(
-            order=order,
-            kind="email",
-            channel="estimate_approve",
-            ok=True,
-            payload={"recipients": list(recipients)},
+        send_mail(
+            subject=f"Cotizacion {order.folio} aprobada",
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[customer_email],
+            fail_silently=True,
         )
 
-    messages.success(request, "Gracias, hemos recibido tu aprobacion.")
     return redirect("estimate_public", token=token)
+
 
 
 @require_POST
@@ -840,15 +878,11 @@ def estimate_decline(request, token):
         ),
         token=token,
     )
-    if estimate.declined_at:
-        messages.info(request, "La cotizacion ya fue rechazada.")
-        return redirect("estimate_public", token=token)
-    if estimate.approved_at:
-        messages.info(request, "La cotizacion ya fue aprobada.")
+    if estimate.approved_at or estimate.declined_at:
         return redirect("estimate_public", token=token)
 
-    order = estimate.order
     now = timezone.now()
+    order = estimate.order
     with transaction.atomic():
         estimate.declined_at = now
         estimate.approved_at = None
@@ -857,31 +891,18 @@ def estimate_decline(request, token):
         order.save(update_fields=["status"])
         StatusHistory.objects.create(order=order, status=order.status, author=None)
 
-    recipients = []
-    if order.assigned_to and order.assigned_to.email:
-        recipients.append(order.assigned_to.email)
-    if not recipients:
-        recipients = list(
-            User.objects.filter(is_staff=True)
-            .exclude(email="")
-            .values_list("email", flat=True)
-        )
-    if recipients:
-        subject = f"Cotizacion rechazada - {order.folio}"
+    customer_email = (order.device.customer.email or "").strip()
+    if customer_email:
         body = (
-            f"La cotizacion de la orden {order.folio} fue rechazada el "
-            f"{timezone.localtime(now).strftime('%Y-%m-%d %H:%M')}.\n"
+            "Hemos registrado el rechazo de la cotizacion.\n"
+            "Si necesitas cambios o ayuda adicional, por favor contactanos.\n"
         )
-        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, list(recipients), fail_silently=True)
-        Notification.objects.create(
-            order=order,
-            kind="email",
-            channel="estimate_decline",
-            ok=True,
-            payload={"recipients": list(recipients)},
+        send_mail(
+            subject=f"Cotizacion {order.folio} rechazada",
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[customer_email],
+            fail_silently=True,
         )
 
-    messages.success(request, "Hemos registrado tu decision.")
     return redirect("estimate_public", token=token)
-
-
