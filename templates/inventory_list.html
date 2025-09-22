@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Inventario</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left}
+    th{background:#f9fafb}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    input,button{padding:8px;border:1px solid #d1d5db;border-radius:6px}
+    button{background:#2563eb;color:#fff;border:0}
+    .tag{padding:2px 6px;border-radius:6px;font-size:12px}
+    .warn{background:#fee2e2;color:#991b1b}
+  </style>
+</head>
+<body>
+  <h1>Inventario</h1>
+
+  {% if messages %}{% for m in messages %}<div>{{ m }}</div>{% endfor %}{% endif %}
+
+  <form class="row" method="get">
+    <input name="q" placeholder="Buscar (SKU/Nombre/Ubicación)" value="{{ q }}">
+    <label><input type="checkbox" name="low" value="1" {% if low %}checked{% endif %}> Solo bajos</label>
+    <button type="submit">Filtrar</button>
+    <a href="{% url 'inventory_list' %}" style="padding:8px;background:#6b7280;color:#fff;border-radius:6px;text-decoration:none">Limpiar</a>
+  </form>
+
+  <form class="row" method="post" action="{% url 'receive_stock' %}">
+    {% csrf_token %}
+    <input name="sku" placeholder="SKU" required>
+    <input name="qty" type="number" min="1" value="1" style="width:90px" required>
+    <input name="reason" placeholder="Motivo (opcional)">
+    <button type="submit">Entrada</button>
+  </form>
+
+  <table>
+    <thead><tr><th>SKU</th><th>Nombre</th><th>Ubicación</th><th>Stock</th><th>Mínimo</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+        <tr>
+          <td>{{ it.sku }}</td>
+          <td>{{ it.name }}</td>
+          <td>{{ it.location|default:"&mdash;" }}</td>
+          <td>
+            {{ it.qty }}
+            {% if it.qty < it.min_qty %}<span class="tag warn">BAJO</span>{% endif %}
+          </td>
+          <td>{{ it.min_qty }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">Sin resultados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
+

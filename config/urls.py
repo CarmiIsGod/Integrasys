@@ -1,4 +1,4 @@
-﻿from django.contrib import admin
+from django.contrib import admin
 from django.urls import path, include
 from core import views
 
@@ -15,4 +15,12 @@ urlpatterns = [
     path("recepcion/ordenes/<int:pk>/part/", views.add_part, name="add_part"),
     path("recepcion/ordenes/<int:pk>/nota/", views.add_note, name="add_note"),
     path("recepcion/ordenes/<int:pk>/assign/", views.assign_tech, name="assign_tech"),
+    path("inventario/", views.inventory_list, name="inventory_list"),
+    path("inventario/entrada/", views.receive_stock, name="receive_stock"),
+    path("recepcion/ordenes/<int:pk>/cotizacion/", views.estimate_edit, name="estimate_edit"),
+    path("recepcion/ordenes/<int:pk>/cotizacion/enviar/", views.estimate_send, name="estimate_send"),
+    path("cotizacion/<uuid:token>/", views.estimate_public, name="estimate_public"),
+    path("cotizacion/<uuid:token>/aprobar/", views.estimate_approve, name="estimate_approve"),
+    path("cotizacion/<uuid:token>/rechazar/", views.estimate_decline, name="estimate_decline"),
 ]
+

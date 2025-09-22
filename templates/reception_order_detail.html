@@ -17,48 +17,68 @@
     .success{background:#16a34a}
     .secondary{background:#6b7280}
     .inline{display:inline-block}
+    .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .actions form{margin:0}
   </style>
   {% load static %}
   {% load tz %}
 </head>
 <body>
-
   <h1>Orden {{ order.folio }}</h1>
-
   {% if messages %}
     <div>
       {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
     </div>
   {% endif %}
-
   <div class="row">
     <div class="card">
       <h2>Resumen</h2>
       <div><b>Estatus:</b> {{ order.get_status_display }}</div>
       <div><b>Ingreso:</b> {{ order.checkin_at|date:"Y-m-d H:i" }}</div>
       {% if order.checkout_at %}<div><b>Salida:</b> {{ order.checkout_at|date:"Y-m-d H:i" }}</div>{% endif %}
-      <div class="muted">Asignado a: {{ order.assigned_to|default:"—" }}</div>
+      <div class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</div>
       <div style="margin-top:8px">
-        <a class="btn" href="{{ public_url }}" target="_blank">Ver público</a>
+        <a class="btn" href="{{ public_url }}" target="_blank">Ver publico</a>
         <a class="btn secondary" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
         {% if wa_link %}<a class="btn success" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
       </div>
     </div>
-
     <div class="card">
-      <h2>Cliente & Equipo</h2>
+      <h2>Cliente y Equipo</h2>
       <div><b>Cliente:</b> {{ order.device.customer.name }}</div>
       <div class="muted">
-        Tel: {{ order.device.customer.phone|default:"—" }} ·
-        Email: {{ order.device.customer.email|default:"—" }}
+        Tel: {{ order.device.customer.phone|default:"-" }} | Email: {{ order.device.customer.email|default:"-" }}
       </div>
       <div style="margin-top:6px">
         <b>Equipo:</b> {{ order.device.brand }} {{ order.device.model }}
         {% if order.device.serial %}<span class="muted">({{ order.device.serial }})</span>{% endif %}
       </div>
     </div>
+    <div class="card">
+      <h2>Cotizacion</h2>
+      <div><b>Estado:</b> {{ estimate_status }}</div>
+      {% if estimate %}
+        <div><b>Subtotal:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
+        <div><b>IVA:</b> ${{ estimate.tax|floatformat:2 }}</div>
+        <div><b>Total:</b> ${{ estimate.total|floatformat:2 }}</div>
+        {% if estimate.note %}<div class="muted">Nota: {{ estimate.note }}</div>{% endif %}
+      {% else %}
+        <div class="muted">(sin cotizacion)</div>
+      {% endif %}
+      <div class="actions">
+        <a class="btn" href="{% url 'estimate_edit' order.pk %}">Editar cotizacion</a>
+        {% if estimate_has_items %}
+          <form method="post" action="{% url 'estimate_send' order.pk %}">
+            {% csrf_token %}
+            <button type="submit">Enviar cotizacion</button>
+          </form>
+        {% endif %}
+        {% if estimate_public_url %}
+          <a class="btn secondary" href="{{ estimate_public_url }}" target="_blank">Ver publico</a>
+        {% endif %}
+      </div>
+    </div>
   </div>
-
   <div class="row" style="margin-top:12px">
     <div class="card">
       <h2>Notas internas</h2>
@@ -71,7 +91,6 @@
         </div>
       </form>
     </div>
-
     <div class="card">
       <h2>Cambiar estado</h2>
       {% if allowed_next %}
@@ -88,13 +107,12 @@
         <div class="muted">No hay transiciones disponibles.</div>
       {% endif %}
     </div>
-
     <div class="card">
-      <h2>Asignar técnico</h2>
+      <h2>Asignar tecnico</h2>
       <form method="post" action="{% url 'assign_tech' order.pk %}">
         {% csrf_token %}
         <select name="user_id" required>
-          <option value="">-- Selecciona técnico --</option>
+          <option value="">-- Selecciona tecnico --</option>
           {% for u in staff_users %}
             <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
           {% endfor %}
@@ -103,7 +121,6 @@
       </form>
     </div>
   </div>
-
   <div class="row" style="margin-top:12px">
     <div class="card">
       <h2>Refacciones usadas</h2>
@@ -131,7 +148,6 @@
         </tbody>
       </table>
     </div>
-
     <div class="card">
       <h2>Historial</h2>
       <table>
@@ -141,7 +157,7 @@
             <tr>
               <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
               <td>{{ h.get_status_display }}</td>
-              <td>{{ h.author|default:"—" }}</td>
+              <td>{{ h.author|default:"-" }}</td>
             </tr>
           {% empty %}
             <tr><td colspan="3" class="muted">(sin historial)</td></tr>
@@ -150,9 +166,8 @@
       </table>
     </div>
   </div>
-
   <div style="margin-top:16px">
-    <a class="btn secondary" href="{% url 'list_orders' %}">← Volver al listado</a>
+    <a class="btn secondary" href="{% url 'list_orders' %}">Volver al listado</a>
   </div>
 </body>
 </html>

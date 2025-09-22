@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Cotizacion orden {{ order.folio }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:960px}
+    h1{margin-bottom:4px}
+    .muted{color:#6b7280}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
+    th{background:#f3f4f6}
+    input,textarea,button{padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px}
+    input[type="number"]{width:100px}
+    button.primary{background:#2563eb;color:#fff;border:0;cursor:pointer}
+    button.link{background:transparent;border:0;color:#ef4444;cursor:pointer}
+    .actions{display:flex;gap:12px;align-items:center;margin-top:12px}
+    a.btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;background:#6b7280;color:#fff}
+    .summary{margin-top:20px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
+    form.inline{display:inline}
+    #add-row{margin-top:8px}
+  </style>
+</head>
+<body>
+  <h1>Cotizacion orden {{ order.folio }}</h1>
+  <div class="muted">Estado: {{ status_label }}</div>
+
+  {% if messages %}
+    <div style="margin-top:8px">
+      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" id="estimate-form">
+    {% csrf_token %}
+    <table>
+      <thead>
+        <tr>
+          <th>Descripcion</th>
+          <th style="width:100px">Cantidad</th>
+          <th style="width:140px">Precio unitario</th>
+          <th style="width:160px">SKU (opcional)</th>
+          <th style="width:80px">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="items-body">
+        {% for item in items %}
+        <tr>
+          <td><input name="description" value="{{ item.description }}" required></td>
+          <td><input name="qty" type="number" min="1" value="{{ item.qty }}" required></td>
+          <td><input name="unit_price" type="number" min="0" step="0.01" value="{{ item.unit_price }}" required></td>
+          <td><input name="inventory_sku" list="inventory-skus" value="{{ item.inventory_sku }}" placeholder="SKU"></td>
+          <td><button type="button" class="link remove-row">Quitar</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="button" id="add-row" class="primary">Agregar partida</button>
+
+    <div style="margin-top:16px">
+      <label for="note"><b>Nota para el cliente</b></label>
+      <textarea id="note" name="note" rows="3" style="width:100%;margin-top:6px" placeholder="Detalle adicional opcional">{{ note }}</textarea>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="primary">Guardar cotizacion</button>
+      <a class="btn" href="{% url 'order_detail' order.pk %}">Volver a la orden</a>
+    </div>
+  </form>
+
+  <div class="summary">
+    <div><b>Subtotal guardado:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
+    <div><b>IVA guardado:</b> ${{ estimate.tax|floatformat:2 }}</div>
+    <div><b>Total guardado:</b> ${{ estimate.total|floatformat:2 }}</div>
+  </div>
+
+  <div class="actions" style="margin-top:12px">
+    {% if has_saved_items %}
+      <form method="post" action="{% url 'estimate_send' order.pk %}" class="inline">
+        {% csrf_token %}
+        <button type="submit" class="primary">Enviar cotizacion</button>
+      </form>
+    {% endif %}
+    {% if public_estimate_url %}
+      <a class="btn" href="{{ public_estimate_url }}" target="_blank">Ver enlace publico</a>
+    {% endif %}
+  </div>
+
+  <datalist id="inventory-skus">
+    {% for item in inventory_items %}
+      <option value="{{ item.sku }}">{{ item.name }}</option>
+    {% endfor %}
+  </datalist>
+
+  <template id="row-template">
+    <tr>
+      <td><input name="description" required></td>
+      <td><input name="qty" type="number" min="1" value="1" required></td>
+      <td><input name="unit_price" type="number" min="0" step="0.01" value="0.00" required></td>
+      <td><input name="inventory_sku" list="inventory-skus" placeholder="SKU"></td>
+      <td><button type="button" class="link remove-row">Quitar</button></td>
+    </tr>
+  </template>
+
+  <script>
+    (function(){
+      const body = document.getElementById('items-body');
+      const template = document.getElementById('row-template').content;
+      const addRowBtn = document.getElementById('add-row');
+
+      function addRow(values) {
+        const clone = document.importNode(template, true);
+        if (values) {
+          clone.querySelector('input[name="description"]').value = values.description || '';
+          clone.querySelector('input[name="qty"]').value = values.qty || '1';
+          clone.querySelector('input[name="unit_price"]').value = values.unit_price || '0.00';
+          clone.querySelector('input[name="inventory_sku"]').value = values.inventory_sku || '';
+        }
+        body.appendChild(clone);
+      }
+
+      addRowBtn.addEventListener('click', function(){
+        addRow();
+      });
+
+      body.addEventListener('click', function(evt){
+        if (evt.target.classList.contains('remove-row')) {
+          const row = evt.target.closest('tr');
+          if (row) {
+            row.remove();
+            if (!body.children.length) {
+              addRow();
+            }
+          }
+        }
+      });
+
+      if (!body.children.length) {
+        addRow();
+      }
+    })();
+  </script>
+</body>
+</html>

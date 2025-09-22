@@ -1,4 +1,4 @@
-﻿from django.db import models
+from django.db import models
 from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.contrib.auth.models import User
@@ -36,9 +36,9 @@ def generate_folio():
 class ServiceOrder(models.Model):
     class Status(models.TextChoices):
         NEW = "NEW", "Recibido"
-        IN_REVIEW = "REV", "En revisión"
+        IN_REVIEW = "REV", "En revision"
         WAITING_PARTS = "WAI", "En espera de repuestos"
-        REQUIRES_AUTH = "AUTH", "Requiere autorización de repuestos"
+        REQUIRES_AUTH = "AUTH", "Requiere autorizacion de repuestos"
         READY_PICKUP = "READY", "Listo para recoger"
         DELIVERED = "DONE", "Entregado"
 
@@ -108,6 +108,7 @@ class InventoryItem(models.Model):
     sku = models.CharField(max_length=40, unique=True)
     name = models.CharField(max_length=120, db_index=True)
     qty = models.IntegerField(default=0)
+    min_qty = models.IntegerField(default=0)  # umbral para alertar bajo stock
     location = models.CharField(max_length=60, blank=True)
 
     def __str__(self):
@@ -127,11 +128,42 @@ class InventoryMovement(models.Model):
             models.CheckConstraint(check=~Q(delta=0), name="inv_delta_nonzero"),
         ]
 
+class Estimate(models.Model):
+    order = models.OneToOneField(ServiceOrder, on_delete=models.CASCADE, related_name="estimate")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+
+    def __str__(self):
+        return f"Estimate {self.order.folio}"
+
+
+class EstimateItem(models.Model):
+    estimate = models.ForeignKey(Estimate, on_delete=models.CASCADE, related_name="items")
+    description = models.CharField(max_length=140)
+    qty = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    inventory_item = models.ForeignKey(InventoryItem, null=True, blank=True, on_delete=models.SET_NULL)
+
+    def __str__(self):
+        return f"{self.description} x{self.qty}"
+
 
 class Notification(models.Model):
-    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, db_index=True)
+    order = models.ForeignKey(ServiceOrder, null=True, blank=True, on_delete=models.CASCADE, db_index=True)
     kind = models.CharField(max_length=20, db_index=True)     
     channel = models.CharField(max_length=20, db_index=True)  
     ok = models.BooleanField(default=False)
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
+
+
+

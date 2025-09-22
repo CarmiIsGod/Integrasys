@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Cotizacion {{ order.folio }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:720px}
+    h1{margin-bottom:4px}
+    .muted{color:#6b7280}
+    .status{margin:12px 0;padding:12px;border-radius:8px}
+    .status-ok{background:#dcfce7;color:#166534}
+    .status-bad{background:#fee2e2;color:#991b1b}
+    .status-pending{background:#fef3c7;color:#92400e}
+    table{width:100%;border-collapse:collapse;margin-top:16px}
+    th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
+    th{background:#f3f4f6}
+    .totals{margin-top:16px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
+    form.inline{display:inline}
+    button{padding:10px 16px;border:0;border-radius:8px;font-size:15px;cursor:pointer;background:#2563eb;color:#fff}
+    button.secondary{background:#ef4444}
+    a.link{color:#2563eb}
+  </style>
+</head>
+<body>
+  <h1>Cotizacion de orden {{ order.folio }}</h1>
+  <div class="muted">Cliente: {{ order.device.customer.name }}</div>
+  <div class="muted">Equipo: {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+
+  {% if messages %}
+    <div style="margin-top:12px">
+      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  {% if estimate.approved_at %}
+    <div class="status status-ok">Cotizacion aprobada el {{ estimate.approved_at|date:"Y-m-d H:i" }}</div>
+  {% elif estimate.declined_at %}
+    <div class="status status-bad">Cotizacion rechazada el {{ estimate.declined_at|date:"Y-m-d H:i" }}</div>
+  {% else %}
+    <div class="status status-pending">Revisa la propuesta y elige una opcion.</div>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Descripcion</th>
+        <th style="width:100px">Cantidad</th>
+        <th style="width:120px">Precio unitario</th>
+        <th style="width:120px">Importe</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.description }}</td>
+        <td>{{ item.qty }}</td>
+        <td>${{ item.unit_price|floatformat:2 }}</td>
+        <td>${{ item.line_total|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div><b>Subtotal:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
+    <div><b>IVA:</b> ${{ estimate.tax|floatformat:2 }}</div>
+    <div><b>Total:</b> ${{ estimate.total|floatformat:2 }}</div>
+  </div>
+
+  {% if estimate.note %}
+    <div style="margin-top:16px">
+      <b>Nota:</b>
+      <div class="muted" style="white-space:pre-wrap">{{ estimate.note }}</div>
+    </div>
+  {% endif %}
+
+  {% if not estimate.approved_at and not estimate.declined_at %}
+    <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
+      <form method="post" action="{% url 'estimate_approve' estimate.token %}" class="inline">
+        {% csrf_token %}
+        <button type="submit">Aprobar cotizacion</button>
+      </form>
+      <form method="post" action="{% url 'estimate_decline' estimate.token %}" class="inline">
+        {% csrf_token %}
+        <button type="submit" class="secondary">Rechazar cotizacion</button>
+      </form>
+    </div>
+  {% else %}
+    <div style="margin-top:20px">
+      <a class="link" href="{% url 'public_status' order.token %}">Ver estado de la orden</a>
+    </div>
+  {% endif %}
+</body>
+</html>

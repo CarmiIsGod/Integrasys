@@ -5,13 +5,15 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.contrib import messages
 from django.db.models import Q
+from django.db import models
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.models import User
-
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from django.db import transaction
 from xhtml2pdf import pisa
 import base64
 from io import BytesIO
@@ -30,7 +32,10 @@ from .models import (
     Notification,
     InventoryItem,
     InventoryMovement,
+    Estimate,
+    EstimateItem,
 )
+
 
 
 ALLOWED = {
@@ -41,6 +46,52 @@ ALLOWED = {
     "READY": ["DONE"],
     "DONE": [],
 }
+
+
+IVA_RATE = Decimal("0.16")
+TWO_PLACES = Decimal("0.01")
+
+
+def _estimate_status_label(estimate):
+    if not estimate:
+        return "Sin cotizacion"
+    if estimate.approved_at:
+        return f"Aprobada ({timezone.localtime(estimate.approved_at).strftime('%Y-%m-%d %H:%M')})"
+    if estimate.declined_at:
+        return f"Rechazada ({timezone.localtime(estimate.declined_at).strftime('%Y-%m-%d %H:%M')})"
+    return "Pendiente"
+
+
+def _build_estimate_form_context(request, order, estimate, *, form_items=None, note=None):
+    items_qs = list(estimate.items.select_related("inventory_item").order_by("id"))
+    if form_items is None:
+        items = [
+            {
+                "description": item.description,
+                "qty": str(item.qty),
+                "unit_price": f"{item.unit_price.quantize(TWO_PLACES)}",
+                "inventory_sku": item.inventory_item.sku if item.inventory_item else "",
+            }
+            for item in items_qs
+        ]
+    else:
+        items = form_items
+    has_saved_items = bool(items_qs)
+    public_url = None
+    if has_saved_items:
+        public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+    context_note = note if note is not None else (estimate.note or "")
+    inventory_catalog = InventoryItem.objects.order_by("name").only("sku", "name")
+    return {
+        "order": order,
+        "estimate": estimate,
+        "items": items,
+        "note": context_note,
+        "status_label": _estimate_status_label(estimate),
+        "has_saved_items": has_saved_items,
+        "public_estimate_url": public_url,
+        "inventory_items": inventory_catalog,
+    }
 
 
 def build_whatsapp_link(phone: str, text: str) -> str:
@@ -103,6 +154,47 @@ def receipt_pdf(request, token):
 
 def staff_required(user):
     return user.is_staff
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+def inventory_list(request):
+    q = (request.GET.get("q", "") or "").strip()
+    low = request.GET.get("low") == "1"
+    items = InventoryItem.objects.all().order_by("sku")
+    if q:
+        search = Q(sku__icontains=q) | Q(name__icontains=q) | Q(location__icontains=q)
+        items = items.filter(search)
+    if low:
+        items = items.filter(qty__lt=models.F("min_qty"))
+    return render(request, "inventory_list.html", {"items": items, "q": q, "low": low})
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+@require_POST
+def receive_stock(request):
+    sku = (request.POST.get("sku") or "").strip()
+    qty_raw = (request.POST.get("qty") or "").strip()
+    reason = (request.POST.get("reason") or "Entrada").strip()
+    item = InventoryItem.objects.filter(sku=sku).first()
+    if not item:
+        messages.error(request, f"SKU {sku} no existe.")
+        return redirect("inventory_list")
+    try:
+        qty = int(qty_raw)
+    except ValueError:
+        messages.error(request, "Cantidad invalida.")
+        return redirect("inventory_list")
+    if qty <= 0:
+        messages.error(request, "La cantidad debe ser mayor a 0.")
+        return redirect("inventory_list")
+
+    InventoryMovement.objects.create(item=item, delta=qty, reason=reason, author=request.user)
+    item.qty = item.qty + qty
+    item.save()
+    messages.success(request, f"Entrada registrada: +{qty} de {item.name} (SKU {item.sku}).")
+    return redirect("inventory_list")
 
 
 @login_required(login_url="/admin/login/")
@@ -212,6 +304,16 @@ def order_detail(request, pk):
     msg = f"{base} Detalle: {public_url}"
     wa_link = build_whatsapp_link(getattr(order.device.customer, "phone", ""), msg)
 
+    try:
+        estimate = order.estimate
+    except Estimate.DoesNotExist:
+        estimate = None
+
+    estimate_has_items = estimate.items.exists() if estimate else False
+    estimate_public_url = None
+    if estimate and estimate_has_items:
+        estimate_public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+
     return render(
         request,
         "reception_order_detail.html",
@@ -224,6 +326,10 @@ def order_detail(request, pk):
             "wa_link": wa_link,
             "status_choices": ServiceOrder.Status.choices,
             "staff_users": User.objects.filter(is_staff=True).order_by("username"),
+            "estimate": estimate,
+            "estimate_status": _estimate_status_label(estimate),
+            "estimate_has_items": estimate_has_items,
+            "estimate_public_url": estimate_public_url,
         },
     )
 
@@ -332,7 +438,7 @@ def add_part(request, pk):
     try:
         qty = int(qty_raw)
     except ValueError:
-        messages.error(request, "Cantidad inválida.")
+        messages.error(request, "Cantidad invalida.")
         return redirect("list_orders")
     if qty <= 0:
         messages.error(request, "La cantidad debe ser mayor a 0.")
@@ -356,7 +462,21 @@ def add_part(request, pk):
     item.qty = item.qty - qty
     item.save()
 
-    messages.success(request, f"Se usó {qty} x {item.name} (SKU {item.sku}) en {order.folio}.")
+    if item.qty < item.min_qty:
+        Notification.objects.create(
+            order=order,
+            kind="stock",
+            channel="threshold",
+            ok=True,
+            payload={
+                "sku": item.sku,
+                "name": item.name,
+                "qty": item.qty,
+                "min": item.min_qty,
+            },
+        )
+
+    messages.success(request, f"Se uso {qty} x {item.name} (SKU {item.sku}) en {order.folio}.")
     return redirect("list_orders")
 
 
@@ -445,3 +565,323 @@ def reception_new_order(request):
         form = ReceptionForm()
 
     return render(request, "reception_new_order.html", {"form": form})
+
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+def estimate_edit(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    estimate, _ = Estimate.objects.get_or_create(order=order)
+
+    if request.method == "POST":
+        descriptions = request.POST.getlist("description")
+        qtys = request.POST.getlist("qty")
+        unit_prices = request.POST.getlist("unit_price")
+        skus = request.POST.getlist("inventory_sku")
+        note = (request.POST.get("note") or "").strip()
+
+        rows_for_context = []
+        parsed_rows = []
+        errors = []
+
+        max_len = max(len(descriptions), len(qtys), len(unit_prices), len(skus))
+        for idx in range(max_len):
+            desc = (descriptions[idx] if idx < len(descriptions) else "").strip()
+            qty_raw = (qtys[idx] if idx < len(qtys) else "").strip()
+            price_raw = (unit_prices[idx] if idx < len(unit_prices) else "").strip()
+            sku_raw = (skus[idx] if idx < len(skus) else "").strip()
+
+            if not desc and not qty_raw and not price_raw and not sku_raw:
+                continue
+
+            rows_for_context.append(
+                {
+                    "description": desc,
+                    "qty": qty_raw or "",
+                    "unit_price": price_raw or "",
+                    "inventory_sku": sku_raw,
+                }
+            )
+
+            if not desc:
+                errors.append(f"Fila {idx + 1}: descripcion requerida.")
+                continue
+            if not qty_raw:
+                errors.append(f"Fila {idx + 1}: cantidad requerida.")
+                continue
+            try:
+                qty = int(qty_raw)
+            except ValueError:
+                errors.append(f"Fila {idx + 1}: cantidad invalida.")
+                continue
+            if qty <= 0:
+                errors.append(f"Fila {idx + 1}: la cantidad debe ser mayor a 0.")
+                continue
+            price_value = price_raw or "0"
+            try:
+                unit_price = Decimal(price_value)
+            except (InvalidOperation, TypeError):
+                errors.append(f"Fila {idx + 1}: precio invalido.")
+                continue
+            if unit_price < 0:
+                errors.append(f"Fila {idx + 1}: el precio no puede ser negativo.")
+                continue
+            unit_price = unit_price.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            inventory_item = None
+            if sku_raw:
+                inventory_item = InventoryItem.objects.filter(sku=sku_raw).first()
+                if not inventory_item:
+                    errors.append(f"Fila {idx + 1}: SKU {sku_raw} no existe.")
+                    continue
+
+            rows_for_context[-1]["qty"] = str(qty)
+            rows_for_context[-1]["unit_price"] = f"{unit_price}"
+            parsed_rows.append(
+                {
+                    "description": desc,
+                    "qty": qty,
+                    "unit_price": unit_price,
+                    "inventory_item": inventory_item,
+                }
+            )
+
+        if not rows_for_context:
+            messages.error(request, "Agrega al menos una partida.")
+            context = _build_estimate_form_context(
+                request,
+                order,
+                estimate,
+                form_items=[],
+                note=note,
+            )
+            return render(request, "estimate_edit.html", context)
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+            context = _build_estimate_form_context(
+                request,
+                order,
+                estimate,
+                form_items=rows_for_context,
+                note=note,
+            )
+            return render(request, "estimate_edit.html", context)
+
+        subtotal = Decimal("0.00")
+        with transaction.atomic():
+            estimate.items.all().delete()
+            for row in parsed_rows:
+                EstimateItem.objects.create(
+                    estimate=estimate,
+                    description=row["description"],
+                    qty=row["qty"],
+                    unit_price=row["unit_price"],
+                    inventory_item=row["inventory_item"],
+                )
+                subtotal += row["unit_price"] * row["qty"]
+            subtotal = subtotal.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            tax = (subtotal * IVA_RATE).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            total = (subtotal + tax).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            estimate.note = note
+            estimate.subtotal = subtotal
+            estimate.tax = tax
+            estimate.total = total
+            if estimate.approved_at or estimate.declined_at:
+                estimate.approved_at = None
+                estimate.declined_at = None
+            estimate.save(update_fields=["note", "subtotal", "tax", "total", "approved_at", "declined_at"])
+
+        messages.success(request, "Cotizacion actualizada.")
+        return redirect("estimate_edit", pk=order.pk)
+
+    context = _build_estimate_form_context(request, order, estimate)
+    return render(request, "estimate_edit.html", context)
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+@require_POST
+def estimate_send(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    try:
+        estimate = order.estimate
+    except Estimate.DoesNotExist:
+        messages.error(request, "La orden no tiene cotizacion.")
+        return redirect("estimate_edit", pk=order.pk)
+    if not estimate.items.exists():
+        messages.error(request, "Agrega partidas a la cotizacion antes de enviar.")
+        return redirect("estimate_edit", pk=order.pk)
+
+    email = (order.device.customer.email or "").strip()
+    if not email:
+        messages.error(request, "El cliente no tiene email registrado.")
+        return redirect("estimate_edit", pk=order.pk)
+
+    public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+    total_display = format(estimate.total or Decimal("0.00"), ".2f")
+    body = (
+        f"Hola {order.device.customer.name},\n\n"
+        f"Compartimos la cotizacion de la orden {order.folio}.\n"
+        f"Total: ${total_display}.\n\n"
+        f"Revisa y responde aqui: {public_url}\n\n"
+        "Gracias."
+    )
+    send_mail(
+        subject=f"Cotizacion orden {order.folio}",
+        message=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        fail_silently=True,
+    )
+    Notification.objects.create(
+        order=order,
+        kind="email",
+        channel="estimate_send",
+        ok=True,
+        payload={"to": email, "estimate": str(estimate.token), "url": public_url},
+    )
+    messages.success(request, "Cotizacion enviada al cliente.")
+    return redirect("estimate_edit", pk=order.pk)
+
+
+def estimate_public(request, token):
+    estimate = get_object_or_404(
+        Estimate.objects.select_related(
+            "order",
+            "order__device",
+            "order__device__customer",
+        ),
+        token=token,
+    )
+    items_qs = list(estimate.items.select_related("inventory_item").order_by("id"))
+    items = [
+        {
+            "description": item.description,
+            "qty": item.qty,
+            "unit_price": item.unit_price.quantize(TWO_PLACES),
+            "line_total": (item.unit_price * item.qty).quantize(TWO_PLACES, rounding=ROUND_HALF_UP),
+        }
+        for item in items_qs
+    ]
+    context = {
+        "estimate": estimate,
+        "order": estimate.order,
+        "items": items,
+    }
+    return render(request, "estimate_public.html", context)
+
+
+@require_POST
+def estimate_approve(request, token):
+    estimate = get_object_or_404(
+        Estimate.objects.select_related(
+            "order",
+            "order__device",
+            "order__device__customer",
+        ),
+        token=token,
+    )
+    if estimate.approved_at:
+        messages.info(request, "La cotizacion ya fue aprobada.")
+        return redirect("estimate_public", token=token)
+    if estimate.declined_at:
+        messages.info(request, "La cotizacion ya fue rechazada anteriormente.")
+        return redirect("estimate_public", token=token)
+
+    order = estimate.order
+    now = timezone.now()
+    with transaction.atomic():
+        estimate.approved_at = now
+        estimate.declined_at = None
+        estimate.save(update_fields=["approved_at", "declined_at"])
+        order.status = ServiceOrder.Status.WAITING_PARTS
+        order.save(update_fields=["status"])
+        StatusHistory.objects.create(order=order, status=order.status, author=None)
+
+    recipients = []
+    if order.assigned_to and order.assigned_to.email:
+        recipients.append(order.assigned_to.email)
+    if not recipients:
+        recipients = list(
+            User.objects.filter(is_staff=True)
+            .exclude(email="")
+            .values_list("email", flat=True)
+        )
+    if recipients:
+        total_display = format(estimate.total or Decimal("0.00"), ".2f")
+        subject = f"Cotizacion aprobada - {order.folio}"
+        body = (
+            f"La cotizacion de la orden {order.folio} fue aprobada el "
+            f"{timezone.localtime(now).strftime('%Y-%m-%d %H:%M')}.\n"
+            f"Total autorizado: ${total_display}.\n"
+        )
+        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, list(recipients), fail_silently=True)
+        Notification.objects.create(
+            order=order,
+            kind="email",
+            channel="estimate_approve",
+            ok=True,
+            payload={"recipients": list(recipients)},
+        )
+
+    messages.success(request, "Gracias, hemos recibido tu aprobacion.")
+    return redirect("estimate_public", token=token)
+
+
+@require_POST
+def estimate_decline(request, token):
+    estimate = get_object_or_404(
+        Estimate.objects.select_related(
+            "order",
+            "order__device",
+            "order__device__customer",
+        ),
+        token=token,
+    )
+    if estimate.declined_at:
+        messages.info(request, "La cotizacion ya fue rechazada.")
+        return redirect("estimate_public", token=token)
+    if estimate.approved_at:
+        messages.info(request, "La cotizacion ya fue aprobada.")
+        return redirect("estimate_public", token=token)
+
+    order = estimate.order
+    now = timezone.now()
+    with transaction.atomic():
+        estimate.declined_at = now
+        estimate.approved_at = None
+        estimate.save(update_fields=["approved_at", "declined_at"])
+        order.status = ServiceOrder.Status.IN_REVIEW
+        order.save(update_fields=["status"])
+        StatusHistory.objects.create(order=order, status=order.status, author=None)
+
+    recipients = []
+    if order.assigned_to and order.assigned_to.email:
+        recipients.append(order.assigned_to.email)
+    if not recipients:
+        recipients = list(
+            User.objects.filter(is_staff=True)
+            .exclude(email="")
+            .values_list("email", flat=True)
+        )
+    if recipients:
+        subject = f"Cotizacion rechazada - {order.folio}"
+        body = (
+            f"La cotizacion de la orden {order.folio} fue rechazada el "
+            f"{timezone.localtime(now).strftime('%Y-%m-%d %H:%M')}.\n"
+        )
+        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, list(recipients), fail_silently=True)
+        Notification.objects.create(
+            order=order,
+            kind="email",
+            channel="estimate_decline",
+            ok=True,
+            payload={"recipients": list(recipients)},
+        )
+
+    messages.success(request, "Hemos registrado tu decision.")
+    return redirect("estimate_public", token=token)
+
+
