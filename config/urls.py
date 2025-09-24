@@ -11,6 +11,7 @@ urlpatterns = [
 
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
+    path("panel/", views.dashboard, name="dashboard"),
 
     path("t/<uuid:token>/", views.public_status, name="public_status"),
     path("t/<uuid:token>/qr.png", views.qr, name="qr"),

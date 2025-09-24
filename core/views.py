@@ -4,7 +4,7 @@ from django.urls import reverse
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.db import models
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
@@ -154,6 +154,63 @@ def receipt_pdf(request, token):
 
 def staff_required(user):
     return user.is_staff
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+def dashboard(request):
+    now = timezone.now()
+    local_tz = timezone.get_current_timezone()
+    local_now = timezone.localtime(now, local_tz)
+
+    counts_by_status = {code: 0 for code, _ in ServiceOrder.Status.choices}
+    status_counts = (
+        ServiceOrder.objects.values("status").annotate(total=Count("id"))
+    )
+    for entry in status_counts:
+        counts_by_status[entry["status"]] = entry["total"]
+
+    today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    last7_start = local_now - timedelta(days=7)
+    last30_start = local_now - timedelta(days=30)
+
+    orders = ServiceOrder.objects.all()
+    today_count = orders.filter(checkin_at__gte=today_start).count()
+    last7_count = orders.filter(checkin_at__gte=last7_start).count()
+    last30_count = orders.filter(checkin_at__gte=last30_start).count()
+
+    durations = ServiceOrder.objects.filter(
+        status=ServiceOrder.Status.DELIVERED,
+        checkout_at__isnull=False,
+        checkin_at__isnull=False,
+    ).values_list("checkin_at", "checkout_at")
+
+    total_days = 0.0
+    delivered_count = 0
+    for checkin_at, checkout_at in durations:
+        local_checkin = timezone.localtime(checkin_at, local_tz)
+        local_checkout = timezone.localtime(checkout_at, local_tz)
+        delta = local_checkout - local_checkin
+        total_seconds = max(delta.total_seconds(), 0)
+        total_days += total_seconds / 86400
+        delivered_count += 1
+
+    avg_days = round(total_days / delivered_count, 2) if delivered_count else 0
+
+    recent_orders = (
+        ServiceOrder.objects.select_related("device", "device__customer")
+        .order_by("-checkin_at")[:10]
+    )
+
+    context = {
+        "counts": counts_by_status,
+        "today_count": today_count,
+        "last7_count": last7_count,
+        "last30_count": last30_count,
+        "avg_days": avg_days,
+        "recent_orders": recent_orders,
+    }
+    return render(request, "dashboard.html", context)
 
 
 @login_required(login_url="/admin/login/")
