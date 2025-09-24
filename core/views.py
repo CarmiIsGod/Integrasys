@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.contrib import messages
 from django.db.models import Q, Count
+from django.db.models.functions import TruncDate
 from django.db import models
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
@@ -18,10 +19,10 @@ from xhtml2pdf import pisa
 import base64
 from io import BytesIO
 import qrcode
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import csv
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from .forms import ReceptionForm
 from .models import (
@@ -159,56 +160,196 @@ def staff_required(user):
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 def dashboard(request):
-    now = timezone.now()
-    local_tz = timezone.get_current_timezone()
-    local_now = timezone.localtime(now, local_tz)
+    q = (request.GET.get("q", "") or "").strip()
+    status = (request.GET.get("status", "") or "").strip()
+    assignee = (request.GET.get("assignee", "") or "").strip()
+    dfrom = (request.GET.get("from", "") or "").strip()
+    dto = (request.GET.get("to", "") or "").strip()
 
-    counts_by_status = {code: 0 for code, _ in ServiceOrder.Status.choices}
-    status_counts = (
-        ServiceOrder.objects.values("status").annotate(total=Count("id"))
-    )
-    for entry in status_counts:
-        counts_by_status[entry["status"]] = entry["total"]
+    tz = timezone.get_current_timezone()
+    local_now = timezone.localtime(timezone.now(), tz)
+
+    def make_aware(value):
+        if settings.USE_TZ and timezone.is_naive(value):
+            return timezone.make_aware(value, tz)
+        return value
+
+    from_date = None
+    from_dt = None
+    if dfrom:
+        try:
+            from_date = datetime.strptime(dfrom, "%Y-%m-%d").date()
+            from_dt = make_aware(datetime.combine(from_date, time.min))
+        except ValueError:
+            from_date = None
+            from_dt = None
+
+    to_date = None
+    to_dt = None
+    if dto:
+        try:
+            to_date = datetime.strptime(dto, "%Y-%m-%d").date()
+            to_dt = make_aware(datetime.combine(to_date + timedelta(days=1), time.min))
+        except ValueError:
+            to_date = None
+            to_dt = None
+
+    qs = ServiceOrder.objects.select_related("device", "device__customer").order_by("-checkin_at")
+
+    if q:
+        search = (
+            Q(folio__icontains=q)
+            | Q(device__serial__icontains=q)
+            | Q(device__model__icontains=q)
+            | Q(device__customer__name__icontains=q)
+        )
+        qs = qs.filter(search)
+
+    if status:
+        qs = qs.filter(status=status)
+
+    if assignee:
+        qs = qs.filter(assigned_to_id=assignee)
+
+    if from_dt:
+        qs = qs.filter(checkin_at__gte=from_dt)
+
+    if to_dt:
+        qs = qs.filter(checkin_at__lt=to_dt)
+
+    counts = {code: 0 for code, _ in ServiceOrder.Status.choices}
+    for entry in qs.values("status").annotate(total=Count("id")):
+        counts[entry["status"]] = entry["total"]
+
+    status_cards = [
+        {"code": code, "label": label, "count": counts.get(code, 0)}
+        for code, label in ServiceOrder.Status.choices
+    ]
+
+    total_count = qs.count()
 
     today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-    last7_start = local_now - timedelta(days=7)
-    last30_start = local_now - timedelta(days=30)
+    today_count = qs.filter(checkin_at__gte=today_start).count()
 
-    orders = ServiceOrder.objects.all()
-    today_count = orders.filter(checkin_at__gte=today_start).count()
-    last7_count = orders.filter(checkin_at__gte=last7_start).count()
-    last30_count = orders.filter(checkin_at__gte=last30_start).count()
+    if not dfrom and not dto:
+        seven_start = today_start - timedelta(days=6)
+        thirty_start = today_start - timedelta(days=29)
+        last7_count = qs.filter(checkin_at__gte=seven_start).count()
+        last30_count = qs.filter(checkin_at__gte=thirty_start).count()
+    else:
+        last7_count = 0
+        last30_count = 0
 
-    durations = ServiceOrder.objects.filter(
+    durations = qs.filter(
         status=ServiceOrder.Status.DELIVERED,
         checkout_at__isnull=False,
         checkin_at__isnull=False,
     ).values_list("checkin_at", "checkout_at")
 
     total_days = 0.0
-    delivered_count = 0
+    done_count = 0
     for checkin_at, checkout_at in durations:
-        local_checkin = timezone.localtime(checkin_at, local_tz)
-        local_checkout = timezone.localtime(checkout_at, local_tz)
-        delta = local_checkout - local_checkin
-        total_seconds = max(delta.total_seconds(), 0)
-        total_days += total_seconds / 86400
-        delivered_count += 1
+        delta = checkout_at - checkin_at
+        total_days += max(delta.total_seconds(), 0) / 86400
+        done_count += 1
 
-    avg_days = round(total_days / delivered_count, 2) if delivered_count else 0
+    avg_days = round(total_days / done_count, 2) if done_count else 0.0
 
-    recent_orders = (
-        ServiceOrder.objects.select_related("device", "device__customer")
-        .order_by("-checkin_at")[:10]
+    recent_orders = qs[:10]
+
+    if from_date or to_date:
+        chart_start_date = from_date or (to_date - timedelta(days=29))
+        chart_end_date = to_date or min(local_now.date(), chart_start_date + timedelta(days=29))
+    else:
+        chart_end_date = local_now.date()
+        chart_start_date = chart_end_date - timedelta(days=13)
+
+    if chart_end_date < chart_start_date:
+        chart_start_date = chart_end_date
+
+    if (chart_end_date - chart_start_date).days > 29:
+        chart_start_date = chart_end_date - timedelta(days=29)
+
+    chart_start_dt = make_aware(datetime.combine(chart_start_date, time.min))
+    chart_end_dt = make_aware(datetime.combine(chart_end_date + timedelta(days=1), time.min))
+
+    chart_data = (
+        qs.filter(checkin_at__gte=chart_start_dt, checkin_at__lt=chart_end_dt)
+        .annotate(day=TruncDate("checkin_at"))
+        .values("day")
+        .annotate(total=Count("id"))
+        .order_by("day")
     )
 
+    counts_by_day = {entry["day"]: entry["total"] for entry in chart_data}
+
+    labels = []
+    values = []
+    current_date = chart_start_date
+    while current_date <= chart_end_date:
+        labels.append(current_date.strftime("%Y-%m-%d"))
+        values.append(counts_by_day.get(current_date, 0))
+        current_date += timedelta(days=1)
+
+    chart_max = max(values) if values else 0
+    step = 24
+    bar_width = 16
+    usable_height = 90
+    chart_points = []
+    for idx, (label, value) in enumerate(zip(labels, values)):
+        height = 0.0
+        if chart_max:
+            height = round((value / chart_max) * usable_height, 2)
+        y = round(100 - height, 2)
+        chart_points.append(
+            {
+                "label": label,
+                "value": value,
+                "x": idx * step,
+                "width": bar_width,
+                "height": height,
+                "y": y,
+            }
+        )
+    chart_width = max(len(chart_points) * step, step)
+
+    staff_users = User.objects.filter(is_staff=True).order_by("username")
+
+    preserve_pairs = []
+    if q:
+        preserve_pairs.append(("q", q))
+    if assignee:
+        preserve_pairs.append(("assignee", assignee))
+    if dfrom:
+        preserve_pairs.append(("from", dfrom))
+    if dto:
+        preserve_pairs.append(("to", dto))
+    status_preserve_query = ""
+    if preserve_pairs:
+        status_preserve_query = "&" + urlencode(preserve_pairs)
+
     context = {
-        "counts": counts_by_status,
+        "counts": counts,
+        "status_cards": status_cards,
+        "total_count": total_count,
         "today_count": today_count,
         "last7_count": last7_count,
         "last30_count": last30_count,
         "avg_days": avg_days,
         "recent_orders": recent_orders,
+        "labels": labels,
+        "values": values,
+        "chart_max": chart_max,
+        "chart_points": chart_points,
+        "chart_width": chart_width,
+        "status": status,
+        "q": q,
+        "assignee": assignee,
+        "dfrom": dfrom,
+        "dto": dto,
+        "status_choices": ServiceOrder.Status.choices,
+        "staff_users": staff_users,
+        "status_preserve_query": status_preserve_query,
     }
     return render(request, "dashboard.html", context)
 

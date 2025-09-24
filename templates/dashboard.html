@@ -1,100 +1,182 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Dashboard</title>
+    <title>Panel del staff</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-        h1 { margin-bottom: 16px; }
-        .metrics { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-        .card { background-color: #ffffff; border: 1px solid #dddddd; border-radius: 6px; padding: 12px 16px; flex: 1 1 200px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
-        .card h2 { font-size: 16px; margin: 0 0 8px; color: #444444; }
-        .card p { font-size: 26px; margin: 0; color: #222222; font-weight: bold; }
-        .table-container { background-color: #ffffff; border: 1px solid #dddddd; border-radius: 6px; padding: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: left; }
-        th { background-color: #f0f0f0; font-weight: 600; }
-        tbody tr:nth-child(even) { background-color: #fafafa; }
-        a { color: #0066cc; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background-color: #f4f6f9; color: #1f2933; }
+        .layout { max-width: 1200px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+        h1 { font-size: 28px; margin: 0; }
+        .filters { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
+        .filters label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+        .filters input, .filters select { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 14px; background-color: #fff; color: #1f2933; }
+        .filters input:focus, .filters select:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
+        .filter-actions { display: flex; gap: 8px; grid-column: 1 / -1; flex-wrap: wrap; }
+        .filters button { background: #2563eb; color: #fff; border: none; border-radius: 5px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+        .filters button:hover { background: #1d4ed8; }
+        .btn-secondary { display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #cbd5e0; color: #374151; border-radius: 5px; padding: 8px 16px; text-decoration: none; }
+        .btn-secondary:hover { background: #f3f4f6; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+        .card { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
+        .card .label { font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: .04em; }
+        .card .value { font-size: 24px; font-weight: 600; color: #1f2933; }
+        .card.emphasis { background: #1d4ed8; border-color: #1d4ed8; color: #ffffff; }
+        .card.emphasis .label { color: rgba(255, 255, 255, 0.8); }
+        .card.emphasis .value { color: #ffffff; }
+        .status-grid a.card { text-decoration: none; color: inherit; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
+        .status-grid a.card:hover { transform: translateY(-2px); border-color: #2563eb; box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18); }
+        .status-grid .code { font-size: 11px; font-weight: 600; color: #2563eb; letter-spacing: .06em; }
+        .chart-card, .table-card { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
+        .chart-card h2, .table-card h2 { margin: 0 0 12px; font-size: 18px; color: #111827; }
+        .mini-chart { width: 100%; height: 180px; }
+        .chart-labels { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; color: #6b7280; }
+        .chart-labels span { flex: 1 1 60px; text-align: center; }
+        .empty-chart { margin: 0; color: #6b7280; font-size: 14px; }
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 8px; text-align: left; }
+        th { font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: .04em; }
+        tbody tr:hover { background: #f9fafb; }
+        .table-card a { color: #2563eb; text-decoration: none; }
+        .table-card a:hover { text-decoration: underline; }
+        @media (max-width: 640px) {
+            .layout { padding: 16px; }
+            .card .value { font-size: 20px; }
+            .chart-labels span { flex: 1 1 45px; }
+        }
     </style>
 </head>
 <body>
     {% load tz %}
-    <h1>Dashboard</h1>
-    <div class="metrics">
-        <div class="card">
-            <h2>Recibido</h2>
-            <p>{{ counts.NEW }}</p>
-        </div>
-        <div class="card">
-            <h2>Revision</h2>
-            <p>{{ counts.REV }}</p>
-        </div>
-        <div class="card">
-            <h2>Espera repuestos</h2>
-            <p>{{ counts.WAI }}</p>
-        </div>
-        <div class="card">
-            <h2>Requiere autorizacion</h2>
-            <p>{{ counts.AUTH }}</p>
-        </div>
-        <div class="card">
-            <h2>Listo para recoger</h2>
-            <p>{{ counts.READY }}</p>
-        </div>
-        <div class="card">
-            <h2>Entregado</h2>
-            <p>{{ counts.DONE }}</p>
-        </div>
-        <div class="card">
-            <h2>Hoy</h2>
-            <p>{{ today_count }}</p>
-        </div>
-        <div class="card">
-            <h2>Ultimos 7 dias</h2>
-            <p>{{ last7_count }}</p>
-        </div>
-        <div class="card">
-            <h2>Ultimos 30 dias</h2>
-            <p>{{ last30_count }}</p>
-        </div>
-        <div class="card">
-            <h2>Promedio (dias)</h2>
-            <p>{{ avg_days }}</p>
-        </div>
-    </div>
+    <div class="layout">
+        <h1>Panel de servicio</h1>
+        <form method="get" class="filters">
+            <div>
+                <label for="filter-q">Buscar</label>
+                <input id="filter-q" type="text" name="q" placeholder="Buscar (folio, cliente, modelo, serie)" value="{{ q }}">
+            </div>
+            <div>
+                <label for="filter-status">Estado</label>
+                <select id="filter-status" name="status">
+                    <option value="">-- Estado --</option>
+                    {% for code, label in status_choices %}
+                        <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="filter-assignee">Tecnico</label>
+                <select id="filter-assignee" name="assignee">
+                    <option value="">-- Tecnico --</option>
+                    {% for user in staff_users %}
+                        <option value="{{ user.id }}" {% if assignee == user.id|stringformat:"s" %}selected{% endif %}>{{ user.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="filter-from">Desde</label>
+                <input id="filter-from" type="date" name="from" value="{{ dfrom }}">
+            </div>
+            <div>
+                <label for="filter-to">Hasta</label>
+                <input id="filter-to" type="date" name="to" value="{{ dto }}">
+            </div>
+            <div class="filter-actions">
+                <button type="submit">Filtrar</button>
+                <a class="btn-secondary" href="{% url 'dashboard' %}">Limpiar</a>
+            </div>
+        </form>
 
-    <div class="table-container">
-        <h2>Ordenes recientes</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Folio</th>
-                    <th>Cliente</th>
-                    <th>Equipo</th>
-                    <th>Estado</th>
-                    <th>Ingreso</th>
-                    <th>Detalle</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for o in recent_orders %}
-                <tr>
-                    <td>{{ o.folio }}</td>
-                    <td>{{ o.device.customer.name }}</td>
-                    <td>{{ o.device.brand }} {{ o.device.model }}</td>
-                    <td>{{ o.get_status_display }}</td>
-                    <td>{{ o.checkin_at|localtime|date:"Y-m-d H:i" }}</td>
-                    <td><a href="{% url 'order_detail' pk=o.pk %}">Ver</a></td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6">Sin ordenes recientes.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <section class="kpi-grid">
+            <div class="card emphasis">
+                <span class="label">Total filtrado</span>
+                <span class="value">{{ total_count }}</span>
+            </div>
+            <div class="card">
+                <span class="label">Hoy</span>
+                <span class="value">{{ today_count }}</span>
+            </div>
+            <div class="card">
+                <span class="label">Ultimos 7 dias</span>
+                <span class="value">{{ last7_count }}</span>
+            </div>
+            <div class="card">
+                <span class="label">Ultimos 30 dias</span>
+                <span class="value">{{ last30_count }}</span>
+            </div>
+            <div class="card">
+                <span class="label">Promedio reparacion</span>
+                <span class="value">{{ avg_days|floatformat:2 }} dias</span>
+            </div>
+        </section>
+
+        <section class="kpi-grid status-grid">
+            {% for item in status_cards %}
+                <a class="card status-card" href="/recepcion/ordenes/?status={{ item.code }}{{ status_preserve_query }}">
+                    <span class="code">{{ item.code }}</span>
+                    <span class="label">{{ item.label }}</span>
+                    <span class="value">{{ item.count }}</span>
+                </a>
+            {% endfor %}
+        </section>
+
+        <section class="chart-card">
+            <h2>Ordenes por dia</h2>
+            {% if chart_points %}
+                <svg class="mini-chart" viewBox="0 0 {{ chart_width }} 100" preserveAspectRatio="none" role="img" aria-label="Evolucion de ingresos diarios">
+                    <line x1="0" y1="100" x2="{{ chart_width }}" y2="100" stroke="#cbd5e0" stroke-width="1"></line>
+                    {% for point in chart_points %}
+                        <rect x="{{ point.x }}" y="{{ point.y }}" width="{{ point.width }}" height="{{ point.height }}" fill="#2563eb">
+                            <title>{{ point.label }}: {{ point.value }}</title>
+                        </rect>
+                    {% endfor %}
+                </svg>
+                <div class="chart-labels">
+                    {% for point in chart_points %}
+                        <span>{{ point.label }}</span>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-chart">Sin datos para la grafica.</p>
+            {% endif %}
+        </section>
+
+        <section class="table-card">
+            <h2>Ultimas 10 ordenes (filtradas)</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Folio</th>
+                            <th>Cliente</th>
+                            <th>Equipo</th>
+                            <th>Estado</th>
+                            <th>Ingreso</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in recent_orders %}
+                            <tr>
+                                <td>{{ o.folio }}</td>
+                                <td>{{ o.device.customer.name }}</td>
+                                <td>{{ o.device.brand }} {{ o.device.model }}</td>
+                                <td>{{ o.get_status_display }}</td>
+                                <td>{{ o.checkin_at|localtime|date:"Y-m-d H:i" }}</td>
+                                <td>
+                                    <a href="{% url 'order_detail' pk=o.pk %}">Interno</a> |
+                                    <a href="{% url 'public_status' token=o.token %}" target="_blank" rel="noopener">Publico</a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="6">Sin ordenes recientes dentro del filtro.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </body>
 </html>
