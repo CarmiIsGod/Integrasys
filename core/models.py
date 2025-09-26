@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.apps import apps
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import uuid
 
 
@@ -99,33 +99,51 @@ class ServiceOrder(models.Model):
             raise last_error
 
 
+    @staticmethod
+    def _quantize_amount(value):
+        if value is None:
+            return Decimal("0.00")
+        if not isinstance(value, Decimal):
+            value = Decimal(value)
+        return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+    @property
+    def approved_total(self):
+        Estimate = apps.get_model(self._meta.app_label, "Estimate")
+        EstimateItem = apps.get_model(self._meta.app_label, "EstimateItem")
+        if not Estimate or not EstimateItem:
+            return Decimal("0.00")
+        try:
+            estimate = self.estimate
+        except Estimate.DoesNotExist:
+            return Decimal("0.00")
+        aggregation = estimate.items.aggregate(
+            total=models.Sum(
+                models.F("qty") * models.F("unit_price"),
+                output_field=models.DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+        total = aggregation.get("total")
+        return self._quantize_amount(total)
+
     @property
     def approved_estimate_total(self):
-        Estimate = apps.get_model(self._meta.app_label, 'Estimate')
-        if Estimate is None:
-            return Decimal('0.00')
-        estimate = (
-            Estimate.objects.filter(order=self, approved_at__isnull=False)
-            .order_by('-approved_at')
-            .first()
-        )
-        if estimate and estimate.total is not None:
-            return estimate.total
-        return Decimal('0.00')
+        return self.approved_total
 
     @property
     def paid_total(self):
-        Payment = apps.get_model(self._meta.app_label, 'Payment')
+        Payment = apps.get_model(self._meta.app_label, "Payment")
         if Payment is None:
-            return Decimal('0.00')
-        aggregation = Payment.objects.filter(order=self).aggregate(total=models.Sum('amount'))
-        total = aggregation.get('total')
-        return total if total is not None else Decimal('0.00')
+            return self._quantize_amount(0)
+        agg = Payment.objects.filter(order=self).aggregate(total=models.Sum("amount"))
+        return self._quantize_amount(agg.get("total") or 0)
 
     @property
     def balance(self):
-        remaining = self.approved_estimate_total - self.paid_total
-        return remaining if remaining > Decimal('0.00') else Decimal('0.00')
+        approved = self.approved_total
+        paid = self.paid_total
+        return self._quantize_amount(approved - paid)
 
 
 class StatusHistory(models.Model):

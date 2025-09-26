@@ -87,20 +87,18 @@
   </div>
   <section>
     <h2>Pagos</h2>
-    <p>Total aprobado: {{ order.approved_estimate_total }} | Pagado: {{ paid_total }} | Saldo: {{ balance }}</p>
+    <p>Total aprobado / Pagado / Saldo: ${{ approved_total|floatformat:2 }} / ${{ paid_total|floatformat:2 }} / ${{ balance|floatformat:2 }}</p>
 
     {% if payments %}
       <table>
-        <thead><tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th><th>Autor</th><th>Recibo</th></tr></thead>
+        <thead><tr><th>Monto</th><th>Metodo</th><th>Referencia</th><th>Fecha</th></tr></thead>
         <tbody>
           {% for p in payments %}
             <tr>
-              <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ p.amount }}</td>
+              <td>${{ p.amount|floatformat:2 }}</td>
               <td>{{ p.method|default:"&mdash;" }}</td>
               <td>{{ p.reference|default:"&mdash;" }}</td>
-              <td>{{ p.author|default:"" }}</td>
-              <td><a href="{% url 'payment_receipt_pdf' payment_id=p.id %}" target="_blank">PDF</a></td>
+              <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -118,7 +116,7 @@
         <input type="text" name="method" placeholder="Efectivo / Transferencia">
         <label>Referencia</label>
         <input type="text" name="reference" placeholder="Folio, ultimos 4, etc.">
-        <button type="submit">Registrar pago</button>
+        <button type="submit">Registrar</button>
       </form>
     {% endif %}
   </section>

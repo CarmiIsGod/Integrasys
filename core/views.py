@@ -554,6 +554,7 @@ def order_detail(request, pk):
     can_send_estimate = is_superuser or is_reception
 
     payments = order.payments.select_related("author")
+    approved_total = order.approved_total
     paid_total = order.paid_total
     balance = order.balance
     can_charge = (is_superuser or is_reception) and balance > Decimal("0.00")
@@ -578,6 +579,7 @@ def order_detail(request, pk):
             "can_assign": can_assign,
             "can_send_estimate": can_send_estimate,
             "payments": payments,
+            "approved_total": approved_total,
             "paid_total": paid_total,
             "balance": balance,
             "can_charge": can_charge,
@@ -629,13 +631,25 @@ def add_payment(request, pk):
     )
 
     customer = order.device.customer
+    amount_display = format(amount, ".2f")
+    new_balance = order.balance
+    balance_display = format(new_balance, ".2f")
     customer_email = (getattr(customer, "email", "") or "").strip()
-    if customer_email:
+    sender_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+    if customer_email and sender_email:
         receipt_url = request.build_absolute_uri(reverse("payment_receipt_pdf", args=[payment.id]))
+        email_body_lines = [
+            f"Hemos registrado tu pago de ${amount_display}.",
+            f"Metodo: {method or 'No especificado'}",
+            f"Referencia: {reference or '-'}",
+            f"Saldo pendiente: ${balance_display}.",
+            f"Recibo PDF: {receipt_url}",
+        ]
+        email_body = "\n".join(email_body_lines)
         sent = send_mail(
             subject=f"Pago registrado {order.folio}",
-            message=f"Gracias. Recibo PDF: {receipt_url}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
+            message=email_body,
+            from_email=sender_email,
             recipient_list=[customer_email],
             fail_silently=True,
         )
@@ -651,7 +665,6 @@ def add_payment(request, pk):
             payload["error"] = "Email no enviado"
         Notification.objects.create(order=order, kind="email", channel="payment", ok=ok, payload=payload)
 
-    amount_display = format(amount, ".2f")
     messages.success(
         request,
         f"Pago registrado por ${amount_display}.",
@@ -686,7 +699,7 @@ def change_status(request, pk):
     if target == "DONE" and hasattr(order, "balance"):
         balance_value = order.balance
         if balance_value is not None and balance_value > Decimal("0.00"):
-            messages.error(request, "No puedes marcar como Entregado: hay saldo pendiente.")
+            messages.error(request, "No puedes entregar con saldo pendiente.")
             return redirect("order_detail", pk=order.pk)
 
     order.status = target
