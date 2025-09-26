@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Recibo de pago - {{ order.folio }}</title>
+  <style>
+    body { font-family: DejaVu Sans, sans-serif; font-size: 12pt; }
+    h1 { font-size: 16pt; margin: 0 0 6pt 0; }
+    .header { border-bottom: 1px solid #000; padding-bottom: 6pt; margin-bottom: 12pt; }
+    .label { font-weight: bold; }
+    .muted { color: #555; font-size: 10pt; }
+    table { width: 100%; border-collapse: collapse; }
+    td { vertical-align: top; padding: 4pt 0; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Recibo de pago</h1>
+    <div><span class="label">Empresa:</span> {{ company_name|default:"Taller" }}</div>
+    <div><span class="label">Folio orden:</span> {{ order.folio }}</div>
+    <div><span class="label">Fecha pago:</span> {{ payment.created_at|date:"Y-m-d H:i" }}</div>
+  </div>
+
+  <table>
+    <tr>
+      <td>
+        <div><span class="label">Cliente:</span> {{ customer.name }}</div>
+        <div><span class="label">Equipo:</span> {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+      </td>
+    </tr>
+  </table>
+
+  <p><span class="label">Monto:</span> {{ payment.amount }}<br>
+     <span class="label">M&eacute;todo:</span> {{ payment.method|default:"&mdash;" }}<br>
+     <span class="label">Referencia:</span> {{ payment.reference|default:"&mdash;" }}<br>
+     <span class="label">Atendi&oacute;:</span> {{ payment.author|default:"" }}</p>
+
+  <p class="muted">Detalle de la orden: {{ public_url }}</p>
+</body>
+</html>

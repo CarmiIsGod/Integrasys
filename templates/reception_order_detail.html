@@ -91,7 +91,7 @@
 
     {% if payments %}
       <table>
-        <thead><tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th><th>Autor</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th><th>Autor</th><th>Recibo</th></tr></thead>
         <tbody>
           {% for p in payments %}
             <tr>
@@ -100,6 +100,7 @@
               <td>{{ p.method|default:"&mdash;" }}</td>
               <td>{{ p.reference|default:"&mdash;" }}</td>
               <td>{{ p.author|default:"" }}</td>
+              <td><a href="{% url 'payment_receipt_pdf' payment_id=p.id %}" target="_blank">PDF</a></td>
             </tr>
           {% endfor %}
         </tbody>

@@ -457,7 +457,7 @@ def list_orders(request):
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp["Content-Disposition"] = 'attachment; filename="ordenes.csv"'
         w = csv.writer(resp)
-        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Link p\u00fablico"])
+        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Pagado","Saldo","Link p\u00fablico"])
         for o in qs:
             public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
             w.writerow([
@@ -468,6 +468,8 @@ def list_orders(request):
                 o.device.serial if o.device_id else "",
                 timezone.localtime(o.checkin_at).strftime("%Y-%m-%d %H:%M"),
                 timezone.localtime(o.checkout_at).strftime("%Y-%m-%d %H:%M") if o.checkout_at else "",
+                str(o.paid_total),
+                str(o.balance),
                 public_url,
             ])
         return resp
@@ -618,7 +620,7 @@ def add_payment(request, pk):
     method = (request.POST.get("method") or "").strip()
     reference = (request.POST.get("reference") or "").strip()
 
-    Payment.objects.create(
+    payment = Payment.objects.create(
         order=order,
         amount=amount,
         method=method,
@@ -626,9 +628,33 @@ def add_payment(request, pk):
         author=request.user,
     )
 
+    customer = order.device.customer
+    customer_email = (getattr(customer, "email", "") or "").strip()
+    if customer_email:
+        receipt_url = request.build_absolute_uri(reverse("payment_receipt_pdf", args=[payment.id]))
+        sent = send_mail(
+            subject=f"Pago registrado {order.folio}",
+            message=f"Gracias. Recibo PDF: {receipt_url}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[customer_email],
+            fail_silently=True,
+        )
+        ok = sent > 0
+        payload = {
+            "to": customer_email,
+            "payment_id": payment.id,
+            "order": order.folio,
+            "receipt_url": receipt_url,
+            "sent": sent,
+        }
+        if not ok:
+            payload["error"] = "Email no enviado"
+        Notification.objects.create(order=order, kind="email", channel="payment", ok=ok, payload=payload)
+
+    amount_display = format(amount, ".2f")
     messages.success(
         request,
-        f"Pago registrado por ${format(amount, '.2f')}.",
+        f"Pago registrado por ${amount_display}.",
     )
     return redirect("order_detail", pk=pk)
 
@@ -657,6 +683,12 @@ def change_status(request, pk):
         messages.error(request, "Solo un superusuario puede marcar como Entregado.")
         return redirect("list_orders")
 
+    if target == "DONE" and hasattr(order, "balance"):
+        balance_value = order.balance
+        if balance_value is not None and balance_value > Decimal("0.00"):
+            messages.error(request, "No puedes marcar como Entregado: hay saldo pendiente.")
+            return redirect("order_detail", pk=order.pk)
+
     order.status = target
     order.save()
 
@@ -683,6 +715,40 @@ def change_status(request, pk):
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+def payment_receipt_pdf(request, payment_id):
+    payment = get_object_or_404(
+        Payment.objects.select_related("order", "author", "order__device", "order__device__customer"),
+        pk=payment_id,
+    )
+    order = payment.order
+    customer = order.device.customer
+    company_name = getattr(settings, "DEFAULT_FROM_EMAIL", "") or "Taller"
+    public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+
+    context = {
+        "payment": payment,
+        "order": order,
+        "customer": customer,
+        "company_name": company_name,
+        "public_url": public_url,
+    }
+    html = render_to_string("payment_receipt.html", context)
+
+    pdf_io = BytesIO()
+    try:
+        result = pisa.CreatePDF(html, dest=pdf_io, encoding="utf-8")
+    except Exception:
+        return HttpResponse(html, content_type="text/html", status=500)
+    if result.err:
+        return HttpResponse(html, content_type="text/html", status=500)
+
+    response = HttpResponse(pdf_io.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="recibo-pago-{order.folio}-{payment.id}.pdf"'
+    return response
+
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
