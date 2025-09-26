@@ -6,6 +6,8 @@ from django.utils import timezone
 from django.apps import apps
 from decimal import Decimal, ROUND_HALF_UP
 import uuid
+import re
+
 
 
 class Customer(models.Model):
@@ -30,9 +32,29 @@ class Device(models.Model):
 
 
 def generate_folio():
-    year = timezone.now().year
-    num = ServiceOrder.objects.filter(checkin_at__year=year).count() + 1
-    return f"SR-{num:04d}-{year}"
+    try:
+        year = timezone.localdate().year
+    except Exception:
+        year = timezone.now().year
+        
+    suffix = f"-{year}"
+    qs = ServiceOrder.objects.filter(folio__endswith=suffix).values_list("folio", flat=True)
+        
+    max_n = 0
+    patt = re.compile(rf"^SR-(\d{{4,}})-{year}$")
+    for f in qs:
+        if not f:
+            continue
+        m = patt.match(f)
+        if not m:
+            continue
+        try:
+            n = int(m.group(1))
+            if n > max_n:
+                max_n = n
+        except ValueError:
+            continue
+    return f"SR-{(max_n + 1):04d}-{year}"
 
 
 class ServiceOrder(models.Model):
