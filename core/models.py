@@ -3,6 +3,8 @@ from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.apps import apps
+from decimal import Decimal
 import uuid
 
 
@@ -97,11 +99,52 @@ class ServiceOrder(models.Model):
             raise last_error
 
 
+    @property
+    def approved_estimate_total(self):
+        Estimate = apps.get_model(self._meta.app_label, 'Estimate')
+        if Estimate is None:
+            return Decimal('0.00')
+        estimate = (
+            Estimate.objects.filter(order=self, approved_at__isnull=False)
+            .order_by('-approved_at')
+            .first()
+        )
+        if estimate and estimate.total is not None:
+            return estimate.total
+        return Decimal('0.00')
+
+    @property
+    def paid_total(self):
+        Payment = apps.get_model(self._meta.app_label, 'Payment')
+        if Payment is None:
+            return Decimal('0.00')
+        aggregation = Payment.objects.filter(order=self).aggregate(total=models.Sum('amount'))
+        total = aggregation.get('total')
+        return total if total is not None else Decimal('0.00')
+
+    @property
+    def balance(self):
+        remaining = self.approved_estimate_total - self.paid_total
+        return remaining if remaining > Decimal('0.00') else Decimal('0.00')
+
+
 class StatusHistory(models.Model):
     order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="history", db_index=True)
     status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices, db_index=True)
     author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
+class Payment(models.Model):
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name='payments', db_index=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    method = models.CharField(max_length=30, blank=True)
+    reference = models.CharField(max_length=80, blank=True)
+    author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class InventoryItem(models.Model):

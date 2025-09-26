@@ -79,11 +79,13 @@
                 {% for code in o.allowed_next %}
                   {% for c,label in status_choices %}
                     {% if c == code %}
-                      <form method="post" action="{% url 'change_status' o.pk %}" style="display:inline">
-                        {% csrf_token %}
-                        <input type="hidden" name="target" value="{{ code }}">
-                        <button type="submit" style="margin-left:6px">{{ label }}</button>
-                      </form>
+                      {% if c != 'DONE' or is_superuser %}
+                        <form method="post" action="{% url 'change_status' o.pk %}" style="display:inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="target" value="{{ code }}">
+                          <button type="submit" style="margin-left:6px">{{ label }}</button>
+                        </form>
+                      {% endif %}
                     {% endif %}
                   {% endfor %}
                 {% endfor %}

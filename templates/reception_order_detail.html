@@ -67,18 +67,60 @@
       {% endif %}
       <div class="actions">
         <a class="btn" href="{% url 'estimate_edit' order.pk %}">Editar cotizacion</a>
-        {% if estimate_has_items %}
+        {% if estimate_has_items and can_send_estimate %}
+
           <form method="post" action="{% url 'estimate_send' order.pk %}">
+
             {% csrf_token %}
+
             <button type="submit">Enviar cotizacion</button>
+
           </form>
+
         {% endif %}
+
         {% if estimate_public_url %}
           <a class="btn secondary" href="{{ estimate_public_url }}" target="_blank">Ver publico</a>
         {% endif %}
       </div>
     </div>
   </div>
+  <section>
+    <h2>Pagos</h2>
+    <p>Total aprobado: {{ order.approved_estimate_total }} | Pagado: {{ paid_total }} | Saldo: {{ balance }}</p>
+
+    {% if payments %}
+      <table>
+        <thead><tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th><th>Autor</th></tr></thead>
+        <tbody>
+          {% for p in payments %}
+            <tr>
+              <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ p.amount }}</td>
+              <td>{{ p.method|default:"&mdash;" }}</td>
+              <td>{{ p.reference|default:"&mdash;" }}</td>
+              <td>{{ p.author|default:"" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">Sin pagos registrados.</p>
+    {% endif %}
+
+    {% if can_charge %}
+      <form method="post" action="{% url 'add_payment' pk=order.pk %}" style="margin-top:10px">
+        {% csrf_token %}
+        <label>Monto</label>
+        <input type="number" name="amount" step="0.01" min="0.01" required>
+        <label>Metodo</label>
+        <input type="text" name="method" placeholder="Efectivo / Transferencia">
+        <label>Referencia</label>
+        <input type="text" name="reference" placeholder="Folio, ultimos 4, etc.">
+        <button type="submit">Registrar pago</button>
+      </form>
+    {% endif %}
+  </section>
   <div class="row" style="margin-top:12px">
     <div class="card">
       <h2>Notas internas</h2>
@@ -96,17 +138,20 @@
       {% if allowed_next %}
         {% for code,label in status_choices %}
           {% if code in allowed_next %}
-            <form method="post" action="{% url 'change_status' order.pk %}" class="inline" style="margin-right:6px">
-              {% csrf_token %}
-              <input type="hidden" name="target" value="{{ code }}">
-              <button type="submit">{{ label }}</button>
-            </form>
+            {% if code != 'DONE' or is_superuser %}
+              <form method="post" action="{% url 'change_status' order.pk %}" class="inline" style="margin-right:6px">
+                {% csrf_token %}
+                <input type="hidden" name="target" value="{{ code }}">
+                <button type="submit">{{ label }}</button>
+              </form>
+            {% endif %}
           {% endif %}
         {% endfor %}
       {% else %}
         <div class="muted">No hay transiciones disponibles.</div>
       {% endif %}
     </div>
+    {% if can_assign %}
     <div class="card">
       <h2>Asignar tecnico</h2>
       <form method="post" action="{% url 'assign_tech' order.pk %}">
@@ -120,6 +165,7 @@
         <button type="submit">Asignar</button>
       </form>
     </div>
+    {% endif %}
   </div>
   <div class="row" style="margin-top:12px">
     <div class="card">

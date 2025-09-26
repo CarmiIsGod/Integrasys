@@ -35,6 +35,7 @@ from .models import (
     InventoryMovement,
     Estimate,
     EstimateItem,
+    Payment,
 )
 
 
@@ -155,6 +156,11 @@ def receipt_pdf(request, token):
 
 def staff_required(user):
     return user.is_staff
+
+def user_in_group(user, group_name):
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    return user.groups.filter(name=group_name).exists()
 
 
 @login_required(login_url="/admin/login/")
@@ -405,7 +411,17 @@ def list_orders(request):
     export = request.GET.get("export") == "1"
     assignee = (request.GET.get("assignee", "") or "").strip()
 
+    is_superuser = request.user.is_superuser
+    is_technician = user_in_group(request.user, "Tecnico") and not is_superuser
+    is_reception = user_in_group(request.user, "Recepcion")
+
+    can_create = is_superuser or is_reception
+    can_assign = is_superuser or is_reception
+    can_send_estimate = is_superuser or is_reception
+
     qs = ServiceOrder.objects.select_related("device","device__customer").order_by("-checkin_at")
+    if is_technician:
+        qs = qs.filter(assigned_to=request.user)
 
     if q:
         qs = qs.filter(
@@ -417,19 +433,23 @@ def list_orders(request):
     if status:
         qs = qs.filter(status=status)
     if assignee:
-        qs = qs.filter(assigned_to_id=assignee)
+        if is_technician:
+            if str(request.user.pk) == assignee:
+                qs = qs.filter(assigned_to=request.user)
+        else:
+            qs = qs.filter(assigned_to_id=assignee)
 
     tz = timezone.get_current_timezone()
     if dfrom:
         try:
-            start = tz.localize(datetime.strptime(dfrom, "%Y-%m-%d"))
-            qs = qs.filter(checkin_at__gte=start)
+            start_dt = tz.localize(datetime.strptime(dfrom, "%Y-%m-%d"))
+            qs = qs.filter(checkin_at__gte=start_dt)
         except ValueError:
             pass
     if dto:
         try:
-            end = tz.localize(datetime.strptime(dto, "%Y-%m-%d")) + timedelta(days=1)
-            qs = qs.filter(checkin_at__lt=end)
+            end_dt = tz.localize(datetime.strptime(dto, "%Y-%m-%d")) + timedelta(days=1)
+            qs = qs.filter(checkin_at__lt=end_dt)
         except ValueError:
             pass
 
@@ -437,7 +457,7 @@ def list_orders(request):
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp["Content-Disposition"] = 'attachment; filename="ordenes.csv"'
         w = csv.writer(resp)
-        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Link público"])
+        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Link p\u00fablico"])
         for o in qs:
             public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
             w.writerow([
@@ -455,15 +475,19 @@ def list_orders(request):
     paginator = Paginator(qs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
 
+    restricted_statuses = {"REV", "WAI", "READY"}
     for o in page_obj.object_list:
-        o.allowed_next = ALLOWED.get(o.status, [])
+        allowed_next = ALLOWED.get(o.status, [])
+        if is_technician:
+            allowed_next = [code for code in allowed_next if code in restricted_statuses]
+        o.allowed_next = allowed_next
         public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
         if o.status == "READY":
-            base = f"Hola {o.device.customer.name}, tu orden {o.folio} está LISTA para recoger."
+            base = f"Hola {o.device.customer.name}, tu orden {o.folio} est\u00e1 LISTA para recoger."
         elif o.status == "DONE":
             base = f"Hola {o.device.customer.name}, tu orden {o.folio} fue ENTREGADA."
         else:
-            base = f"Hola {o.device.customer.name}, tu orden {o.folio} está {o.get_status_display()}."
+            base = f"Hola {o.device.customer.name}, tu orden {o.folio} est\u00e1 {o.get_status_display()}."
         msg = f"{base} Detalle: {public_url}"
         o.whatsapp_link = build_whatsapp_link(getattr(o.device.customer, "phone", ""), msg)
 
@@ -477,9 +501,13 @@ def list_orders(request):
         "ALLOWED": ALLOWED,
         "assignee": assignee,
         "staff_users": User.objects.filter(is_staff=True).order_by("username"),
+        "can_create": can_create,
+        "can_assign": can_assign,
+        "can_send_estimate": can_send_estimate,
+        "is_technician": is_technician,
+        "is_superuser": is_superuser,
     }
     return render(request, "reception_orders.html", context)
-
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
@@ -492,13 +520,20 @@ def order_detail(request, pk):
     parts = InventoryMovement.objects.filter(order=order).select_related("item").order_by("-created_at")
     allowed_next = ALLOWED.get(order.status, [])
 
+    is_superuser = request.user.is_superuser
+    is_technician = user_in_group(request.user, "Tecnico") and not is_superuser
+    is_reception = user_in_group(request.user, "Recepcion")
+
+    if is_technician:
+        allowed_next = [code for code in allowed_next if code in {"REV", "WAI", "READY"}]
+
     public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
     if order.status == "READY":
-        base = f"Hola {order.device.customer.name}, tu orden {order.folio} está LISTA para recoger."
+        base = f"Hola {order.device.customer.name}, tu orden {order.folio} est\u00e1 LISTA para recoger."
     elif order.status == "DONE":
         base = f"Hola {order.device.customer.name}, tu orden {order.folio} fue ENTREGADA."
     else:
-        base = f"Hola {order.device.customer.name}, tu orden {order.folio} está {order.get_status_display()}."
+        base = f"Hola {order.device.customer.name}, tu orden {order.folio} est\u00e1 {order.get_status_display()}."
     msg = f"{base} Detalle: {public_url}"
     wa_link = build_whatsapp_link(getattr(order.device.customer, "phone", ""), msg)
 
@@ -511,6 +546,15 @@ def order_detail(request, pk):
     estimate_public_url = None
     if estimate and estimate_has_items:
         estimate_public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+
+    can_create = is_superuser or is_reception
+    can_assign = is_superuser or is_reception
+    can_send_estimate = is_superuser or is_reception
+
+    payments = order.payments.select_related("author")
+    paid_total = order.paid_total
+    balance = order.balance
+    can_charge = (is_superuser or is_reception) and balance > Decimal("0.00")
 
     return render(
         request,
@@ -528,8 +572,65 @@ def order_detail(request, pk):
             "estimate_status": _estimate_status_label(estimate),
             "estimate_has_items": estimate_has_items,
             "estimate_public_url": estimate_public_url,
+            "can_create": can_create,
+            "can_assign": can_assign,
+            "can_send_estimate": can_send_estimate,
+            "payments": payments,
+            "paid_total": paid_total,
+            "balance": balance,
+            "can_charge": can_charge,
+            "is_technician": is_technician,
+            "is_superuser": is_superuser,
         },
     )
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+@require_POST
+def add_payment(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+
+    if not request.user.is_superuser and not user_in_group(request.user, "Recepcion"):
+        messages.error(request, "No tienes permisos para registrar pagos.")
+        return redirect("order_detail", pk=pk)
+
+    raw_amount = (request.POST.get("amount") or "").strip()
+
+    try:
+        amount = Decimal(raw_amount)
+    except (InvalidOperation, TypeError):
+        messages.error(request, "Monto invalido.")
+        return redirect("order_detail", pk=pk)
+
+    if amount <= Decimal("0.00"):
+        messages.error(request, "El monto debe ser mayor a cero.")
+        return redirect("order_detail", pk=pk)
+
+    balance = order.balance
+    if balance <= Decimal("0.00"):
+        messages.error(request, "La orden no tiene saldo por cobrar.")
+        return redirect("order_detail", pk=pk)
+
+    if amount > balance:
+        messages.error(request, "El monto excede el saldo por cobrar.")
+        return redirect("order_detail", pk=pk)
+
+    method = (request.POST.get("method") or "").strip()
+    reference = (request.POST.get("reference") or "").strip()
+
+    Payment.objects.create(
+        order=order,
+        amount=amount,
+        method=method,
+        reference=reference,
+        author=request.user,
+    )
+
+    messages.success(
+        request,
+        f"Pago registrado por ${format(amount, '.2f')}.",
+    )
+    return redirect("order_detail", pk=pk)
 
 
 @login_required(login_url="/admin/login/")
@@ -541,8 +642,16 @@ def change_status(request, pk):
     allowed = ALLOWED.get(order.status, [])
 
     if target not in allowed:
-        messages.error(request, "Transición de estado inválida.")
+        messages.error(request, "Transicion de estado invalida.")
         return redirect("list_orders")
+
+    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+        if order.assigned_to_id != request.user.id:
+            messages.error(request, "Solo puedes actualizar tus ordenes asignadas.")
+            return redirect("list_orders")
+        if target not in {"REV", "WAI", "READY"}:
+            messages.error(request, "Los tecnicos solo pueden cambiar a REV, WAI o READY.")
+            return redirect("list_orders")
 
     if target == "DONE" and not request.user.is_superuser:
         messages.error(request, "Solo un superusuario puede marcar como Entregado.")
@@ -561,20 +670,19 @@ def change_status(request, pk):
             f"Hola {order.device.customer.name},\n\n"
             f"Tu equipo: {order.device.brand} {order.device.model} ({order.device.serial})\n"
             f"Estatus: {order.get_status_display()}\n\n"
-            f"Consulta el detalle aquí: {public_url}\n\n"
+            f"Consulta el detalle aqui: {public_url}\n\n"
             f"Gracias.\n"
         )
         try:
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [cust_email], fail_silently=False)
             Notification.objects.create(order=order, kind="email", channel="status", ok=True,
                                         payload={"to": cust_email, "target": target})
-        except Exception as e:
+        except Exception as exc:
             Notification.objects.create(order=order, kind="email", channel="status", ok=False,
-                                        payload={"to": cust_email, "target": target, "error": str(e)})
+                                        payload={"to": cust_email, "target": target, "error": str(exc)})
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
-
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
@@ -582,9 +690,19 @@ def change_status(request, pk):
 def assign_tech(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     uid = (request.POST.get("user_id") or "").strip()
+
+    is_superuser = request.user.is_superuser
+    is_technician = user_in_group(request.user, "Tecnico") and not is_superuser
+    if is_technician and order.assigned_to_id != request.user.id:
+        messages.error(request, "Solo puedes gestionar ordenes asignadas a ti.")
+        return redirect("order_detail", pk=order.pk)
+    if is_technician and uid and uid != str(request.user.id):
+        messages.error(request, "No puedes reasignar la orden a otro usuario.")
+        return redirect("order_detail", pk=order.pk)
+
     user = User.objects.filter(pk=uid, is_staff=True).first()
     if not user:
-        messages.error(request, "Selecciona un técnico válido.")
+        messages.error(request, "Selecciona un tecnico valido.")
         return redirect("order_detail", pk=order.pk)
     order.assigned_to = user
     order.save()
@@ -592,7 +710,7 @@ def assign_tech(request, pk):
         try:
             public_url = request.build_absolute_uri(reverse("order_detail", args=[order.pk]))
             send_mail(
-                subject=f"Se te asignó la orden {order.folio}",
+                subject=f"Se te asigno la orden {order.folio}",
                 message=f"Revisa la orden {order.folio}: {public_url}",
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
@@ -603,29 +721,39 @@ def assign_tech(request, pk):
     messages.success(request, f"Asignado a {user.get_username()}.")
     return redirect("order_detail", pk=order.pk)
 
-
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 @require_POST
 def add_note(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
-    text = (request.POST.get("note") or "").strip()
-    if not text:
+
+    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+        if order.assigned_to_id != request.user.id:
+            messages.error(request, "Solo puedes agregar notas a tus ordenes asignadas.")
+            return redirect("order_detail", pk=order.pk)
+
+    text_value = (request.POST.get("note") or "").strip()
+    if not text_value:
         messages.error(request, "Escribe una nota.")
         return redirect("order_detail", pk=order.pk)
     stamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
     author = request.user.get_username()
-    order.notes = (order.notes or "") + ("" if not order.notes else "\n") + f"[{stamp}] {author}: {text}"
+    order.notes = (order.notes or "") + ("" if not order.notes else "\n") + f"[{stamp}] {author}: {text_value}"
     order.save()
     messages.success(request, "Nota agregada.")
     return redirect("order_detail", pk=order.pk)
-
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 @require_POST
 def add_part(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
+
+    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+        if order.assigned_to_id != request.user.id:
+            messages.error(request, "Solo puedes usar partes en tus ordenes asignadas.")
+            return redirect("list_orders")
+
     sku = (request.POST.get("sku") or "").strip()
     qty_raw = (request.POST.get("qty") or "").strip()
     reason = (request.POST.get("reason") or "").strip()
@@ -677,10 +805,13 @@ def add_part(request, pk):
     messages.success(request, f"Se uso {qty} x {item.name} (SKU {item.sku}) en {order.folio}.")
     return redirect("list_orders")
 
-
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 def reception_new_order(request):
+    if not (request.user.is_superuser or user_in_group(request.user, "Recepcion")):
+        messages.error(request, "No tienes permiso para crear ordenes de servicio.")
+        return redirect("list_orders")
+
     if request.method == "POST":
         form = ReceptionForm(request.POST)
         if form.is_valid():
@@ -743,7 +874,7 @@ def reception_new_order(request):
                 try:
                     send_mail(
                         subject=f"Orden {order.folio}",
-                        message=f"Gracias. Consulta tu orden aquí: {public_url}",
+                        message=f"Gracias. Consulta tu orden aqui: {public_url}",
                         from_email=settings.DEFAULT_FROM_EMAIL,
                         recipient_list=[email],
                         fail_silently=False,
@@ -752,10 +883,10 @@ def reception_new_order(request):
                         order=order, kind="email", channel="create", ok=True,
                         payload={"to": email}
                     )
-                except Exception as e:
+                except Exception as exc:
                     Notification.objects.create(
                         order=order, kind="email", channel="create", ok=False,
-                        payload={"to": email, "error": str(e)}
+                        payload={"to": email, "error": str(exc)}
                     )
 
             return redirect("public_status", token=order.token)
@@ -763,9 +894,6 @@ def reception_new_order(request):
         form = ReceptionForm()
 
     return render(request, "reception_new_order.html", {"form": form})
-
-
-
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 def estimate_edit(request, pk):
