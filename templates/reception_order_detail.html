@@ -36,6 +36,7 @@
       <div><b>Estatus:</b> {{ order.get_status_display }}</div>
       <div><b>Ingreso:</b> {{ order.checkin_at|date:"Y-m-d H:i" }}</div>
       {% if order.checkout_at %}<div><b>Salida:</b> {{ order.checkout_at|date:"Y-m-d H:i" }}</div>{% endif %}
+      <div>Total aprobado: ${{ approved_total|floatformat:2 }} / Pagado: ${{ paid_total|floatformat:2 }} / Saldo: ${{ balance|floatformat:2 }}</div>
       <div class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</div>
       <div style="margin-top:8px">
         <a class="btn" href="{{ public_url }}" target="_blank">Ver publico</a>
@@ -86,39 +87,38 @@
     </div>
   </div>
   <section>
-    <h2>Pagos</h2>
-    <p>Total aprobado / Pagado / Saldo: ${{ approved_total|floatformat:2 }} / ${{ paid_total|floatformat:2 }} / ${{ balance|floatformat:2 }}</p>
+    <div class="card">
+      <h2>Pagos</h2>
 
-    {% if payments %}
+      {% if can_charge %}
+        <form method="post" action="{% url 'add_payment' order.pk %}" style="margin-bottom:10px">
+          {% csrf_token %}
+          <label>Monto</label>
+          <input type="number" name="amount" step="0.01" min="0.01" required>
+          <label>Metodo</label>
+          <input type="text" name="method" maxlength="30" placeholder="Efectivo / Transferencia" required>
+          <label>Referencia</label>
+          <input type="text" name="reference" maxlength="80" placeholder="Folio, ultimos 4, etc.">
+          <button type="submit">Registrar</button>
+        </form>
+      {% endif %}
+
       <table>
-        <thead><tr><th>Monto</th><th>Metodo</th><th>Referencia</th><th>Fecha</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th></tr></thead>
         <tbody>
           {% for p in payments %}
             <tr>
+              <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
               <td>${{ p.amount|floatformat:2 }}</td>
               <td>{{ p.method|default:"&mdash;" }}</td>
               <td>{{ p.reference|default:"&mdash;" }}</td>
-              <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
             </tr>
+          {% empty %}
+            <tr><td colspan="4" class="muted">Sin pagos registrados.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    {% else %}
-      <p class="muted">Sin pagos registrados.</p>
-    {% endif %}
-
-    {% if can_charge %}
-      <form method="post" action="{% url 'add_payment' pk=order.pk %}" style="margin-top:10px">
-        {% csrf_token %}
-        <label>Monto</label>
-        <input type="number" name="amount" step="0.01" min="0.01" required>
-        <label>Metodo</label>
-        <input type="text" name="method" placeholder="Efectivo / Transferencia">
-        <label>Referencia</label>
-        <input type="text" name="reference" placeholder="Folio, ultimos 4, etc.">
-        <button type="submit">Registrar</button>
-      </form>
-    {% endif %}
+    </div>
   </section>
   <div class="row" style="margin-top:12px">
     <div class="card">

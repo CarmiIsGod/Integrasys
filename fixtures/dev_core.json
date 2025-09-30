@@ -1,0 +1,93 @@
+[
+  {
+    "model": "core.customer",
+    "pk": 2,
+    "fields": {
+      "name": "Diego Sagarnaga",
+      "phone": "6141013558",
+      "email": "diegosagarnaga@gmail.com"
+    }
+  },
+  {
+    "model": "core.device",
+    "pk": 2,
+    "fields": {
+      "customer": 2,
+      "brand": "MSI",
+      "model": "Katana 15",
+      "serial": "301948019",
+      "notes": "No prende"
+    }
+  },
+  {
+    "model": "core.serviceorder",
+    "pk": 2,
+    "fields": {
+      "device": 2,
+      "folio": "SR-0001-2025",
+      "token": "07d5db1e-fce2-45df-a2b4-8d9b819cd97a",
+      "status": "WAI",
+      "checkin_at": "2025-09-30T16:48:11.541Z",
+      "checkout_at": null,
+      "notes": "No prende, trae cable AC",
+      "assigned_to": 4
+    }
+  },
+  {
+    "model": "core.statushistory",
+    "pk": 5,
+    "fields": {
+      "order": 2,
+      "status": "NEW",
+      "author": 4,
+      "created_at": "2025-09-30T16:48:11.576Z"
+    }
+  },
+  {
+    "model": "core.statushistory",
+    "pk": 6,
+    "fields": {
+      "order": 2,
+      "status": "REV",
+      "author": 4,
+      "created_at": "2025-09-30T16:49:52.253Z"
+    }
+  },
+  {
+    "model": "core.statushistory",
+    "pk": 7,
+    "fields": {
+      "order": 2,
+      "status": "WAI",
+      "author": null,
+      "created_at": "2025-09-30T16:51:00.167Z"
+    }
+  },
+  {
+    "model": "core.estimate",
+    "pk": 1,
+    "fields": {
+      "order": 2,
+      "created_at": "2025-09-30T16:49:59.490Z",
+      "updated_at": "2025-09-30T16:49:59.490Z",
+      "approved_at": "2025-09-30T16:51:00.164Z",
+      "declined_at": null,
+      "note": "La pila no hace su función correctamente, necesita reemplazo",
+      "subtotal": "500.00",
+      "tax": "80.00",
+      "total": "580.00",
+      "token": "0ad3580b-4edb-425c-83a2-17eee605aaaf"
+    }
+  },
+  {
+    "model": "core.estimateitem",
+    "pk": 2,
+    "fields": {
+      "estimate": 1,
+      "description": "Bateria",
+      "qty": 1,
+      "unit_price": "500.00",
+      "inventory_item": null
+    }
+  }
+]

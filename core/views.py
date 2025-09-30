@@ -592,14 +592,12 @@ def order_detail(request, pk):
 @user_passes_test(staff_required)
 @require_POST
 def add_payment(request, pk):
-    order = get_object_or_404(ServiceOrder, pk=pk)
-
-    if not request.user.is_superuser and not user_in_group(request.user, "Recepcion"):
-        messages.error(request, "No tienes permisos para registrar pagos.")
-        return redirect("order_detail", pk=pk)
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("device", "device__customer"),
+        pk=pk,
+    )
 
     raw_amount = (request.POST.get("amount") or "").strip()
-
     try:
         amount = Decimal(raw_amount)
     except (InvalidOperation, TypeError):
@@ -608,6 +606,21 @@ def add_payment(request, pk):
 
     if amount <= Decimal("0.00"):
         messages.error(request, "El monto debe ser mayor a cero.")
+        return redirect("order_detail", pk=pk)
+
+    method = (request.POST.get("method") or "").strip()
+    reference = (request.POST.get("reference") or "").strip()
+
+    if not method:
+        messages.error(request, "Debes indicar el metodo de pago.")
+        return redirect("order_detail", pk=pk)
+
+    if len(method) > 30:
+        messages.error(request, "El metodo debe tener maximo 30 caracteres.")
+        return redirect("order_detail", pk=pk)
+
+    if len(reference) > 80:
+        messages.error(request, "La referencia debe tener maximo 80 caracteres.")
         return redirect("order_detail", pk=pk)
 
     balance = order.balance
@@ -619,9 +632,6 @@ def add_payment(request, pk):
         messages.error(request, "El monto excede el saldo por cobrar.")
         return redirect("order_detail", pk=pk)
 
-    method = (request.POST.get("method") or "").strip()
-    reference = (request.POST.get("reference") or "").strip()
-
     payment = Payment.objects.create(
         order=order,
         amount=amount,
@@ -630,22 +640,21 @@ def add_payment(request, pk):
         author=request.user,
     )
 
-    customer = order.device.customer
     amount_display = format(amount, ".2f")
     new_balance = order.balance
     balance_display = format(new_balance, ".2f")
-    customer_email = (getattr(customer, "email", "") or "").strip()
+
+    customer_email = (getattr(order.device.customer, "email", "") or "").strip()
     sender_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
     if customer_email and sender_email:
-        receipt_url = request.build_absolute_uri(reverse("payment_receipt_pdf", args=[payment.id]))
-        email_body_lines = [
+        email_lines = [
             f"Hemos registrado tu pago de ${amount_display}.",
-            f"Metodo: {method or 'No especificado'}",
-            f"Referencia: {reference or '-'}",
-            f"Saldo pendiente: ${balance_display}.",
-            f"Recibo PDF: {receipt_url}",
+            f"Metodo: {method}.",
         ]
-        email_body = "\n".join(email_body_lines)
+        if reference:
+            email_lines.append(f"Referencia: {reference}.")
+        email_lines.append(f"Saldo pendiente: ${balance_display}.")
+        email_body = "\n".join(email_lines)
         sent = send_mail(
             subject=f"Pago registrado {order.folio}",
             message=email_body,
@@ -653,22 +662,36 @@ def add_payment(request, pk):
             recipient_list=[customer_email],
             fail_silently=True,
         )
-        ok = sent > 0
         payload = {
             "to": customer_email,
             "payment_id": payment.id,
             "order": order.folio,
-            "receipt_url": receipt_url,
             "sent": sent,
+            "amount": amount_display,
+            "method": method,
+            "balance": balance_display,
         }
-        if not ok:
+        if sent <= 0:
             payload["error"] = "Email no enviado"
-        Notification.objects.create(order=order, kind="email", channel="payment", ok=ok, payload=payload)
+        Notification.objects.create(
+            order=order,
+            kind="email",
+            channel="payment",
+            ok=sent > 0,
+            payload=payload,
+        )
 
     messages.success(
         request,
-        f"Pago registrado por ${amount_display}.",
+        f"Pago de ${amount_display} registrado por {method}.",
     )
+
+    if new_balance == Decimal("0.00") and order.status == ServiceOrder.Status.READY:
+        messages.info(
+            request,
+            "Saldo cubierto; ya puedes marcar la orden como Entregado (DONE).",
+        )
+
     return redirect("order_detail", pk=pk)
 
 
@@ -728,6 +751,7 @@ def change_status(request, pk):
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
+
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
