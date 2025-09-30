@@ -62,17 +62,19 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
-    }
-else:
+FORCE_SQLITE = os.getenv("FORCE_SQLITE", "0").lower() in ("1", "true", "yes")
+
+if FORCE_SQLITE or not DATABASE_URL:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
-        }
     }
+    }
+else:
+    DATABASES = {
+        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+        }
 
 LANGUAGE_CODE = "es-mx"
 TIME_ZONE = "America/Mexico_City"
