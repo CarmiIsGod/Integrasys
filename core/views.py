@@ -1,6 +1,7 @@
 from django.http import HttpResponse, Http404
+from mimetypes import guess_type
 from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.contrib import messages
@@ -25,6 +26,7 @@ import re
 from urllib.parse import quote, urlencode
 
 from .forms import ReceptionForm
+from .decorators import manager_required
 from .models import (
     Customer,
     Device,
@@ -36,6 +38,7 @@ from .models import (
     Estimate,
     EstimateItem,
     Payment,
+    Attachment,
 )
 
 
@@ -84,7 +87,7 @@ def _build_estimate_form_context(request, order, estimate, *, form_items=None, n
         public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
     context_note = note if note is not None else (estimate.note or "")
     inventory_catalog = InventoryItem.objects.order_by("name").only("sku", "name")
-    return {
+    context = {
         "order": order,
         "estimate": estimate,
         "items": items,
@@ -94,6 +97,32 @@ def _build_estimate_form_context(request, order, estimate, *, form_items=None, n
         "public_estimate_url": public_url,
         "inventory_items": inventory_catalog,
     }
+
+    tax_name = getattr(settings, "TAX_NAME", "IVA")
+    tax_rate_setting = getattr(settings, "TAX_RATE", IVA_RATE)
+    try:
+        tax_rate_decimal = Decimal(str(tax_rate_setting))
+    except (InvalidOperation, TypeError, ValueError):
+        tax_rate_decimal = IVA_RATE
+
+    tax_value = getattr(estimate, "tax", Decimal("0")) or Decimal("0")
+    if not isinstance(tax_value, Decimal):
+        try:
+            tax_value = Decimal(str(tax_value))
+        except (InvalidOperation, TypeError, ValueError):
+            tax_value = Decimal("0")
+    include_tax_flag = tax_value > Decimal("0")
+
+    tax_rate_pct = int((tax_rate_decimal * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    context.update(
+        {
+            "include_tax": include_tax_flag,
+            "tax_name": tax_name,
+            "tax_rate_pct": tax_rate_pct,
+        }
+    )
+    return context
 
 
 def build_whatsapp_link(phone: str, text: str) -> str:
@@ -113,7 +142,8 @@ def public_status(request, token):
     except ServiceOrder.DoesNotExist:
         raise Http404("Orden no encontrada")
     history = order.history.order_by("-created_at")
-    return render(request, "public_status.html", {"order": order, "history": history})
+    attachments_public = order.attachments.filter(is_public=True).order_by("-created_at")
+    return render(request, "public_status.html", {"order": order, "history": history, "attachments_public": attachments_public})
 
 
 def qr(request, token):
@@ -128,19 +158,95 @@ def qr(request, token):
 
 def receipt_pdf(request, token):
     order = get_object_or_404(ServiceOrder, token=token)
-    public_url = request.build_absolute_uri(reverse("public_status", args=[token]))
-
-    try:
-        buf = BytesIO()
-        qrcode.make(public_url).save(buf, format="PNG")
-        qr_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-    except Exception:
-        qr_b64 = ""
-
-    html = render_to_string(
-        "receipt.html",
-        {"order": order, "qr_b64": qr_b64, "public_url": public_url},
+    order_token = str(order.token)
+    public_url = request.build_absolute_uri(
+        reverse("public_status", args=[order_token])
     )
+
+    public_qr_url = None
+    try:
+        public_qr_url = request.build_absolute_uri(
+            reverse("public_qr", args=[order_token])
+        )
+    except NoReverseMatch:
+        try:
+            public_qr_url = request.build_absolute_uri(
+                reverse("qr", args=[order_token])
+            )
+        except NoReverseMatch:
+            public_qr_url = None
+
+    qr_b64 = ""
+    if not public_qr_url:
+        try:
+            buf = BytesIO()
+            qrcode.make(public_url).save(buf, format="PNG")
+            qr_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception:
+            qr_b64 = ""
+
+    issued_at = getattr(order, "checkin_at", None)
+    issued_at_local = issued_at
+    if issued_at:
+        try:
+            issued_at_local = timezone.localtime(issued_at)
+        except Exception:
+            issued_at_local = issued_at
+    issued_at_display = (
+        issued_at_local.strftime("%d/%m/%Y %H:%M") if issued_at_local else ""
+    )
+
+    device = getattr(order, "device", None)
+    customer_name = ""
+    equipment_parts = []
+    serial_part = ""
+    if device:
+        customer = getattr(device, "customer", None)
+        if customer:
+            customer_name = customer.name or ""
+        if getattr(device, "brand", ""):
+            equipment_parts.append(device.brand)
+        if getattr(device, "model", ""):
+            equipment_parts.append(device.model)
+        if getattr(device, "serial", ""):
+            serial_part = device.serial
+    equipment_display = " ".join(part for part in equipment_parts if part).strip()
+    if serial_part:
+        equipment_display = (
+            f"{equipment_display} ({serial_part})" if equipment_display else serial_part
+        )
+
+    payments = order.payments.all().order_by("created_at")
+    has_payments = payments.exists()
+
+    approved_amount = order.approved_total
+    paid_amount = order.paid_total
+    balance_amount = order.balance
+
+    company_name = getattr(settings, "COMPANY_NAME", "Integrasys")
+    context = {
+        "order": order,
+        "qr_b64": qr_b64,
+        "public_url": public_url,
+        "public_qr_url": public_qr_url,
+        "issued_at_display": issued_at_display,
+        "customer_name": customer_name,
+        "equipment_display": equipment_display,
+        "payments": payments,
+        "has_payments": has_payments,
+        "approved": approved_amount,
+        "paid": paid_amount,
+        "balance": balance_amount,
+        "approved_total_display": approved_amount,
+        "paid_total_display": paid_amount,
+        "balance_display": balance_amount,
+        "COMPANY_NAME": company_name,
+        "COMPANY_LOGO_URL": getattr(settings, "COMPANY_LOGO_URL", ""),
+        "COMPANY_PHONE": getattr(settings, "COMPANY_PHONE", ""),
+        "COMPANY_RFC": getattr(settings, "COMPANY_RFC", ""),
+    }
+
+    html = render_to_string("receipt_pdf.html", context)
 
     pdf_io = BytesIO()
     try:
@@ -518,6 +624,7 @@ def order_detail(request, pk):
         ServiceOrder.objects.select_related("device","device__customer"),
         pk=pk,
     )
+    attachments = order.attachments.all().order_by("-created_at")
     history = order.history.order_by("-created_at")
     parts = InventoryMovement.objects.filter(order=order).select_related("item").order_by("-created_at")
     allowed_next = ALLOWED.get(order.status, [])
@@ -559,18 +666,74 @@ def order_detail(request, pk):
     balance = order.balance
     can_charge = (is_superuser or is_reception) and balance > Decimal("0.00")
 
+    staff_users = User.objects.filter(is_staff=True).order_by("username")
+    status_choices = ServiceOrder.Status.choices
+
+    pdf_url = reverse("receipt_pdf", kwargs={"token": order.token})
+    whatsapp_url = wa_link
+
+    payments_block = render_to_string(
+        "reception/_payments_block.html",
+        {
+            "order": order,
+            "payments": payments,
+            "can_charge": can_charge,
+        },
+        request=request,
+    )
+    notes_block = render_to_string(
+        "reception/_notes_block.html",
+        {"order": order},
+        request=request,
+    )
+    status_block = render_to_string(
+        "reception/_status_block.html",
+        {
+            "order": order,
+            "allowed_next": allowed_next,
+            "status_choices": status_choices,
+            "is_superuser": is_superuser,
+        },
+        request=request,
+    )
+    assign_block = render_to_string(
+        "reception/_assign_block.html",
+        {
+            "order": order,
+            "can_assign": can_assign,
+            "staff_users": staff_users,
+        },
+        request=request,
+    )
+    inventory_block = render_to_string(
+        "reception/_inventory_block.html",
+        {
+            "order": order,
+            "parts": parts,
+        },
+        request=request,
+    )
+    history_block = render_to_string(
+        "reception/_history_block.html",
+        {
+            "history": history,
+        },
+        request=request,
+    )
+
     return render(
         request,
         "reception_order_detail.html",
         {
             "order": order,
             "history": history,
+            "attachments": attachments,
             "parts": parts,
             "allowed_next": allowed_next,
             "public_url": public_url,
             "wa_link": wa_link,
-            "status_choices": ServiceOrder.Status.choices,
-            "staff_users": User.objects.filter(is_staff=True).order_by("username"),
+            "status_choices": status_choices,
+            "staff_users": staff_users,
             "estimate": estimate,
             "estimate_status": _estimate_status_label(estimate),
             "estimate_has_items": estimate_has_items,
@@ -583,6 +746,14 @@ def order_detail(request, pk):
             "paid_total": paid_total,
             "balance": balance,
             "can_charge": can_charge,
+            "pdf_url": pdf_url,
+            "whatsapp_url": whatsapp_url,
+            "payments_block": payments_block,
+            "notes_block": notes_block,
+            "status_block": status_block,
+            "assign_block": assign_block,
+            "inventory_block": inventory_block,
+            "history_block": history_block,
             "is_technician": is_technician,
             "is_superuser": is_superuser,
         },
@@ -825,6 +996,78 @@ def assign_tech(request, pk):
     return redirect("order_detail", pk=order.pk)
 
 @login_required(login_url="/admin/login/")
+@user_passes_test(lambda u: u.is_staff)
+@require_POST
+def add_attachment(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    files = request.FILES.getlist("attachments") or request.FILES.getlist("attachment")
+
+    if not files:
+        messages.error(request, "Selecciona 1 o más archivos.")
+        return redirect("order_detail", pk=pk)
+
+    is_public = bool(request.POST.get("is_public"))
+    max_bytes = 10 * 1024 * 1024
+    uploaded = 0
+    rejected = 0
+
+    for file_obj in files:
+        size = getattr(file_obj, "size", None)
+        if size is not None and size > max_bytes:
+            rejected += 1
+            continue
+
+        name = getattr(file_obj, "name", "") or ""
+        name_lower = name.lower()
+        mime_type, _ = guess_type(name)
+
+        if mime_type and mime_type.startswith("image/"):
+            kind = "image"
+        elif name_lower.endswith(".pdf"):
+            kind = "pdf"
+        else:
+            kind = "file"
+
+        try:
+            Attachment.objects.create(
+                order=order,
+                file=file_obj,
+                kind=kind,
+                is_public=is_public,
+                uploaded_by=request.user,
+            )
+            uploaded += 1
+        except Exception:
+            rejected += 1
+
+    if uploaded:
+        messages.success(request, f"{uploaded} archivo(s) cargado(s).")
+    if rejected:
+        messages.error(request, f"{rejected} archivo(s) rechazado(s). Máx 10 MB.")
+
+    return redirect("order_detail", pk=pk)
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(lambda u: u.is_staff)
+@require_POST
+def delete_attachment(request, pk, att_id):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    attachment = get_object_or_404(Attachment, pk=att_id, order=order)
+
+    file_field = getattr(attachment, "file", None)
+    if file_field:
+        try:
+            file_field.delete(save=False)
+        except Exception:
+            pass
+
+    attachment.delete()
+    messages.success(request, "Adjunto eliminado.")
+    return redirect("order_detail", pk=pk)
+
+
+@login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 @require_POST
 def add_note(request, pk):
@@ -1009,6 +1252,7 @@ def estimate_edit(request, pk):
         unit_prices = request.POST.getlist("unit_price")
         skus = request.POST.getlist("inventory_sku")
         note = (request.POST.get("note") or "").strip()
+        include_tax_flag = bool(request.POST.get("include_tax"))
 
         rows_for_context = []
         parsed_rows = []
@@ -1084,6 +1328,7 @@ def estimate_edit(request, pk):
                 form_items=[],
                 note=note,
             )
+            context["include_tax"] = include_tax_flag
             return render(request, "estimate_edit.html", context)
 
         if errors:
@@ -1096,9 +1341,16 @@ def estimate_edit(request, pk):
                 form_items=rows_for_context,
                 note=note,
             )
+            context["include_tax"] = include_tax_flag
             return render(request, "estimate_edit.html", context)
 
         subtotal = Decimal("0.00")
+        tax_rate_setting = getattr(settings, "TAX_RATE", IVA_RATE)
+        try:
+            tax_rate = Decimal(str(tax_rate_setting))
+        except (InvalidOperation, TypeError, ValueError):
+            tax_rate = IVA_RATE
+
         with transaction.atomic():
             estimate.items.all().delete()
             for row in parsed_rows:
@@ -1111,7 +1363,10 @@ def estimate_edit(request, pk):
                 )
                 subtotal += row["unit_price"] * row["qty"]
             subtotal = subtotal.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-            tax = (subtotal * IVA_RATE).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            if include_tax_flag:
+                tax = (subtotal * tax_rate).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            else:
+                tax = Decimal("0.00")
             total = (subtotal + tax).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
             estimate.note = note
             estimate.subtotal = subtotal
@@ -1169,6 +1424,7 @@ def estimate_send(request, pk):
         "tax": tax,
         "total": total,
         "public_url": public_url,
+        "tax_name": getattr(settings, "TAX_NAME", "IVA"),
     }
     subject = f"Cotizacion orden {order.folio}"
     plain_message = (
@@ -1247,6 +1503,7 @@ def estimate_public(request, token):
         "is_pending": is_pending,
         "approved_at_local": approved_at_local,
         "declined_at_local": declined_at_local,
+        "tax_name": getattr(settings, "TAX_NAME", "IVA"),
     }
     return render(request, "estimate_public.html", context)
 
@@ -1335,3 +1592,220 @@ def estimate_decline(request, token):
         )
 
     return redirect("estimate_public", token=token)
+
+
+
+
+def _panel_range_details(request):
+    tz = timezone.get_current_timezone()
+    today = timezone.localdate()
+
+    def _parse(value):
+        value = (value or "").strip()
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
+    from_date = _parse(request.GET.get("from"))
+    to_date = _parse(request.GET.get("to"))
+
+    if from_date and to_date and from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    if not from_date and not to_date:
+        to_date = today
+        from_date = today - timedelta(days=29)
+    elif not from_date:
+        from_date = to_date - timedelta(days=29)
+    elif not to_date:
+        to_date = from_date
+
+    def _as_aware(day, offset_days=0):
+        if day is None:
+            return None
+        base_day = day + timedelta(days=offset_days)
+        combined = datetime.combine(base_day, time.min)
+        if settings.USE_TZ and timezone.is_naive(combined):
+            return timezone.make_aware(combined, tz)
+        return combined
+
+    start_dt = _as_aware(from_date)
+    end_dt = _as_aware(to_date, offset_days=1) if to_date else None
+
+    return {
+        "from_date": from_date,
+        "to_date": to_date,
+        "from_value": from_date.isoformat() if from_date else "",
+        "to_value": to_date.isoformat() if to_date else "",
+        "start": start_dt,
+        "end": end_dt,
+    }
+
+
+@login_required(login_url="/admin/login/")
+@manager_required
+def panel(request):
+    range_meta = _panel_range_details(request)
+    start_dt = range_meta["start"]
+    end_dt = range_meta["end"]
+
+    orders_qs = ServiceOrder.objects.select_related("device", "device__customer")
+    if start_dt:
+        orders_qs = orders_qs.filter(checkin_at__gte=start_dt)
+    if end_dt:
+        orders_qs = orders_qs.filter(checkin_at__lt=end_dt)
+    orders_qs = orders_qs.order_by("-checkin_at")
+
+    orders_total = orders_qs.count()
+    orders_new = orders_qs.filter(status=ServiceOrder.Status.NEW).count()
+    orders_done = orders_qs.filter(status=ServiceOrder.Status.DELIVERED).count()
+    in_progress_statuses = [
+        ServiceOrder.Status.IN_REVIEW,
+        ServiceOrder.Status.WAITING_PARTS,
+        ServiceOrder.Status.REQUIRES_AUTH,
+        ServiceOrder.Status.READY_PICKUP,
+    ]
+    orders_inprogress = orders_qs.filter(status__in=in_progress_statuses).count()
+
+    attachments_qs = Attachment.objects.filter(order__in=orders_qs)
+    payments_qs = Payment.objects.filter(order__in=orders_qs)
+    if start_dt:
+        attachments_qs = attachments_qs.filter(created_at__gte=start_dt)
+        payments_qs = payments_qs.filter(created_at__gte=start_dt)
+    if end_dt:
+        attachments_qs = attachments_qs.filter(created_at__lt=end_dt)
+        payments_qs = payments_qs.filter(created_at__lt=end_dt)
+
+    attachments_count = attachments_qs.count()
+    payments_total = payments_qs.aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+
+    avg_ticket_raw = Estimate.objects.filter(order__in=orders_qs).aggregate(avg=models.Avg("total"))["avg"]
+    avg_ticket = avg_ticket_raw or Decimal("0.00")
+
+    recent_orders = list(orders_qs.select_related("device__customer")[:10])
+    last_items = []
+    for order in recent_orders:
+        device = getattr(order, "device", None)
+        customer_name = ""
+        if device and getattr(device, "customer", None):
+            customer_name = device.customer.name
+        last_items.append(
+            {
+                "id": order.id,
+                "customer": customer_name,
+                "status": order.get_status_display(),
+                "created_at": order.checkin_at,
+                "total": order.approved_total,
+                "balance": order.balance,
+            }
+        )
+
+    is_manager = request.user.is_superuser or request.user.groups.filter(name="Gerencia").exists()
+
+    context = {
+        "from_date": range_meta["from_value"],
+        "to_date": range_meta["to_value"],
+        "orders_total": orders_total,
+        "orders_new": orders_new,
+        "orders_inprogress": orders_inprogress,
+        "orders_done": orders_done,
+        "attachments_count": attachments_count,
+        "payments_total": payments_total,
+        "avg_ticket": avg_ticket,
+        "last_items": last_items,
+        "is_mgr": is_manager,
+    }
+    return render(request, "panel.html", context)
+
+
+@login_required(login_url="/admin/login/")
+@manager_required
+def panel_export_csv(request):
+    range_meta = _panel_range_details(request)
+    start_dt = range_meta["start"]
+    end_dt = range_meta["end"]
+
+    orders_qs = ServiceOrder.objects.select_related("device", "device__customer")
+    if start_dt:
+        orders_qs = orders_qs.filter(checkin_at__gte=start_dt)
+    if end_dt:
+        orders_qs = orders_qs.filter(checkin_at__lt=end_dt)
+    orders_qs = orders_qs.order_by("-checkin_at")
+
+    orders_list = list(orders_qs)
+    order_ids = [order.id for order in orders_list]
+
+    payments_map = {}
+    if order_ids:
+        payments_qs = Payment.objects.filter(order_id__in=order_ids)
+        if start_dt:
+            payments_qs = payments_qs.filter(created_at__gte=start_dt)
+        if end_dt:
+            payments_qs = payments_qs.filter(created_at__lt=end_dt)
+        payments_map = {
+            row["order_id"]: row["total"] or Decimal("0.00")
+            for row in payments_qs.values("order_id").annotate(total=models.Sum("amount"))
+        }
+
+    from_label = range_meta["from_value"] or "all"
+    to_label = range_meta["to_value"] or "all"
+    filename = f"orders_{from_label}_to_{to_label}.csv"
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
+    writer = csv.writer(response)
+    writer.writerow([
+        "folio",
+        "cliente",
+        "equipo",
+        "estado",
+        "ingreso",
+        "total_aprobado",
+        "pagado",
+        "saldo",
+        "pagos_en_rango",
+    ])
+
+    for order in orders_list:
+        device = getattr(order, "device", None)
+        customer_name = ""
+        equipment_parts = []
+        serial = ""
+        if device:
+            if getattr(device, "customer", None):
+                customer_name = device.customer.name
+            if getattr(device, "brand", None):
+                equipment_parts.append(device.brand)
+            if getattr(device, "model", None):
+                equipment_parts.append(device.model)
+            serial = device.serial or ""
+        equipment = " ".join(part for part in equipment_parts if part).strip()
+        if serial:
+            equipment = f"{equipment} ({serial})" if equipment else serial
+
+        checkin_at = order.checkin_at
+        if settings.USE_TZ and timezone.is_aware(checkin_at):
+            checkin_at = timezone.localtime(checkin_at)
+        ingreso = checkin_at.strftime("%Y-%m-%d %H:%M") if checkin_at else ""
+
+        approved = order.approved_total
+        paid_total = order.paid_total
+        balance = order.balance
+        payments_in_range = payments_map.get(order.id, Decimal("0.00"))
+
+        writer.writerow([
+            order.folio,
+            customer_name,
+            equipment,
+            order.get_status_display(),
+            ingreso,
+            f"{approved:.2f}",
+            f"{paid_total:.2f}",
+            f"{balance:.2f}",
+            f"{payments_in_range:.2f}",
+        ])
+
+    return response

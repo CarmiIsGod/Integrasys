@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from .models import (
     Customer, Device, ServiceOrder, StatusHistory,
-    InventoryItem, InventoryMovement, Notification
+    InventoryItem, InventoryMovement, Notification,
+    Attachment,
 )
 
 admin.site.site_header = "Integrasys - Administración"
@@ -23,6 +24,13 @@ admin.site.index_title = "Panel de Recepción y Reparaciones"
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("name", "phone", "email")
     search_fields = ("name", "phone", "email")
+
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    list_display = ("id", "order", "kind", "is_public", "uploaded_by", "created_at")
+    list_filter = ("kind", "is_public", "created_at")
+    search_fields = ("order__folio", "file", "uploaded_by__username")
+    readonly_fields = ("created_at",)
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
@@ -139,3 +147,4 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                         Notification.objects.create(order=obj, kind=kind, channel="email", ok=False, payload={"error": str(e)})
 
 admin.site.register([InventoryItem, InventoryMovement, Notification])
+

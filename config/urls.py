@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.urls import path, include
-from django.views.generic import RedirectView   
+from django.views.generic import RedirectView
+from django.conf import settings
+from django.conf.urls.static import static
 from core import views
 
 urlpatterns = [
@@ -20,6 +22,8 @@ urlpatterns = [
     path("recepcion/nueva-orden/", views.reception_new_order, name="reception_new_order"),
     path("recepcion/ordenes/", views.list_orders, name="list_orders"),
     path("recepcion/ordenes/<int:pk>/", views.order_detail, name="order_detail"),
+    path("recepcion/ordenes/<int:pk>/archivo/", views.add_attachment, name="add_attachment"),
+    path("recepcion/ordenes/<int:pk>/archivo/<int:att_id>/eliminar/", views.delete_attachment, name="delete_attachment"),
     path("recepcion/ordenes/<int:pk>/pago/", views.add_payment, name="add_payment"),
     path("recepcion/ordenes/p/<int:payment_id>/recibo.pdf", views.payment_receipt_pdf, name="payment_receipt_pdf"),
     path("recepcion/ordenes/<int:pk>/status/", views.change_status, name="change_status"),
@@ -40,3 +44,6 @@ urlpatterns = [
 ]
 
 
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

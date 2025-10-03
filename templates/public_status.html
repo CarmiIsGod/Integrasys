@@ -1,4 +1,55 @@
-﻿<!doctype html>
+{% extends "base_nav.html" %}
+{% block title %}Estado {{ order.folio }}{% endblock %}
+{% block content %}
+<div class="card mb-3">
+  <div class="d-flex flex-wrap align-items-start gap-3">
+    <div>
+      <h1 class="mb-2">Folio {{ order.folio }}</h1>
+      <div class="text-muted">Cliente: {{ order.device.customer.name }}</div>
+      <div class="text-muted">Equipo: {{ order.device.brand }} {{ order.device.model }}</div>
+      <p class="mt-3 mb-0">Estado actual: <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ order.get_status_display }}</span></p>
+    </div>
+    <img src="./qr.png" width="120" height="120" alt="QR" class="ms-auto rounded d-none d-sm-block">
+  </div>
+
+  <h3 class="mt-4">Historial</h3>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light"><tr><th>Fecha</th><th>Estado</th></tr></thead>
+      <tbody>
+        {% for s in order.history.all %}
+        <tr><td>{{ s.created_at }}</td><td>{{ s.get_status_display }}</td></tr>
+        {% empty %}
+        <tr><td colspan="2" class="text-muted text-center">Sin cambios de estado a&uacute;n.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-muted mt-3 mb-2">Guarda esta p&aacute;gina o el QR para consultar m&aacute;s tarde.</p>
+  <p class="mb-0">
+    <a class="btn btn-outline-primary btn-sm" href="{% url 'receipt_pdf' token=order.token %}" target="_blank"><i class="bi bi-file-earmark-arrow-down"></i> Descargar recibo (PDF)</a>
+  </p>
+
+  {% if attachments_public %}
+  <h3 class="mt-4">Adjuntos</h3>
+  <div class="d-flex flex-wrap gap-3">
+    {% for a in attachments_public %}
+    {% if a.kind == "image" %}
+    <a href="{{ a.file.url }}" target="_blank"><img src="{{ a.file.url }}" class="rounded" style="width:140px;height:auto" alt="Adjunto"></a>
+    {% else %}
+    <a class="btn btn-outline-secondary btn-sm" href="{{ a.file.url }}" target="_blank"><i class="bi bi-file-earmark-text"></i> {{ a.file.name|slice:"-40:" }}</a>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="d-print-none">
+  <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir</button>
+</div>
+{% endblock %}
+{% comment %}<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -36,7 +87,21 @@
     <p style="margin-top:12px">
       <a href="{% url 'receipt_pdf' token=order.token %}" target="_blank">Descargar recibo (PDF)</a>
     </p>
+    {% if attachments_public %}
+      <h3>Adjuntos</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        {% for a in attachments_public %}
+          {% if a.kind == "image" %}
+            <a href="{{ a.file.url }}" target="_blank"><img src="{{ a.file.url }}" style="width:120px;height:auto"></a>
+          {% else %}
+            <a href="{{ a.file.url }}" target="_blank">{{ a.file.name|slice:"-40:" }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
   </div>
   <p class="no-print"><button onclick="window.print()">Imprimir</button></p>
 </body>
 </html>
+
+{% endcomment %}

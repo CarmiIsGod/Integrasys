@@ -1,0 +1,36 @@
+<form method="post" action="{% url 'add_part' order.pk %}" class="row g-2 align-items-end mb-3">
+  {% csrf_token %}
+  <div class="col-md-4">
+    <label class="form-label" for="sku">SKU</label>
+    <input id="sku" name="sku" placeholder="SKU" required class="form-control">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label" for="qty">Cantidad</label>
+    <input id="qty" name="qty" type="number" min="1" value="1" required class="form-control">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label" for="reason">Motivo (opcional)</label>
+    <input id="reason" name="reason" placeholder="Motivo" class="form-control">
+  </div>
+  <div class="col-md-2 text-end">
+    <button type="submit" class="btn btn-outline-primary btn-sm"><i class="bi bi-tools"></i> Usar</button>
+  </div>
+</form>
+<div class="table-responsive">
+  <table class="table table-sm mb-0">
+    <thead class="table-light"><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
+    <tbody>
+      {% for m in parts %}
+        <tr>
+          <td class="text-muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
+          <td>{{ m.item.sku }}</td>
+          <td>{{ m.item.name }}</td>
+          <td>{{ m.delta }}</td>
+          <td>{{ m.reason|default:"&mdash;" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="text-muted">Sin consumos.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

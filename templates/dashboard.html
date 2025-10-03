@@ -1,182 +1,144 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="utf-8">
-    <title>Panel del staff</title>
-    <style>
-        body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background-color: #f4f6f9; color: #1f2933; }
-        .layout { max-width: 1200px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
-        h1 { font-size: 28px; margin: 0; }
-        .filters { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
-        .filters label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
-        .filters input, .filters select { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 14px; background-color: #fff; color: #1f2933; }
-        .filters input:focus, .filters select:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
-        .filter-actions { display: flex; gap: 8px; grid-column: 1 / -1; flex-wrap: wrap; }
-        .filters button { background: #2563eb; color: #fff; border: none; border-radius: 5px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
-        .filters button:hover { background: #1d4ed8; }
-        .btn-secondary { display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #cbd5e0; color: #374151; border-radius: 5px; padding: 8px 16px; text-decoration: none; }
-        .btn-secondary:hover { background: #f3f4f6; }
-        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-        .card { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
-        .card .label { font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: .04em; }
-        .card .value { font-size: 24px; font-weight: 600; color: #1f2933; }
-        .card.emphasis { background: #1d4ed8; border-color: #1d4ed8; color: #ffffff; }
-        .card.emphasis .label { color: rgba(255, 255, 255, 0.8); }
-        .card.emphasis .value { color: #ffffff; }
-        .status-grid a.card { text-decoration: none; color: inherit; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
-        .status-grid a.card:hover { transform: translateY(-2px); border-color: #2563eb; box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18); }
-        .status-grid .code { font-size: 11px; font-weight: 600; color: #2563eb; letter-spacing: .06em; }
-        .chart-card, .table-card { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
-        .chart-card h2, .table-card h2 { margin: 0 0 12px; font-size: 18px; color: #111827; }
-        .mini-chart { width: 100%; height: 180px; }
-        .chart-labels { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; color: #6b7280; }
-        .chart-labels span { flex: 1 1 60px; text-align: center; }
-        .empty-chart { margin: 0; color: #6b7280; font-size: 14px; }
-        .table-wrapper { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 8px; text-align: left; }
-        th { font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: .04em; }
-        tbody tr:hover { background: #f9fafb; }
-        .table-card a { color: #2563eb; text-decoration: none; }
-        .table-card a:hover { text-decoration: underline; }
-        @media (max-width: 640px) {
-            .layout { padding: 16px; }
-            .card .value { font-size: 20px; }
-            .chart-labels span { flex: 1 1 45px; }
-        }
-    </style>
-</head>
-<body>
-    {% load tz %}
-    <div class="layout">
-        <h1>Panel de servicio</h1>
-        <form method="get" class="filters">
-            <div>
-                <label for="filter-q">Buscar</label>
-                <input id="filter-q" type="text" name="q" placeholder="Buscar (folio, cliente, modelo, serie)" value="{{ q }}">
-            </div>
-            <div>
-                <label for="filter-status">Estado</label>
-                <select id="filter-status" name="status">
-                    <option value="">-- Estado --</option>
-                    {% for code, label in status_choices %}
-                        <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label for="filter-assignee">Tecnico</label>
-                <select id="filter-assignee" name="assignee">
-                    <option value="">-- Tecnico --</option>
-                    {% for user in staff_users %}
-                        <option value="{{ user.id }}" {% if assignee == user.id|stringformat:"s" %}selected{% endif %}>{{ user.username }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label for="filter-from">Desde</label>
-                <input id="filter-from" type="date" name="from" value="{{ dfrom }}">
-            </div>
-            <div>
-                <label for="filter-to">Hasta</label>
-                <input id="filter-to" type="date" name="to" value="{{ dto }}">
-            </div>
-            <div class="filter-actions">
-                <button type="submit">Filtrar</button>
-                <a class="btn-secondary" href="{% url 'dashboard' %}">Limpiar</a>
-            </div>
-        </form>
+﻿{% extends "base_nav.html" %}
+{% load tz %}
 
-        <section class="kpi-grid">
-            <div class="card emphasis">
-                <span class="label">Total filtrado</span>
-                <span class="value">{{ total_count }}</span>
-            </div>
-            <div class="card">
-                <span class="label">Hoy</span>
-                <span class="value">{{ today_count }}</span>
-            </div>
-            <div class="card">
-                <span class="label">Ultimos 7 dias</span>
-                <span class="value">{{ last7_count }}</span>
-            </div>
-            <div class="card">
-                <span class="label">Ultimos 30 dias</span>
-                <span class="value">{{ last30_count }}</span>
-            </div>
-            <div class="card">
-                <span class="label">Promedio reparacion</span>
-                <span class="value">{{ avg_days|floatformat:2 }} dias</span>
-            </div>
-        </section>
+{% block title %}Panel del staff{% endblock %}
 
-        <section class="kpi-grid status-grid">
-            {% for item in status_cards %}
-                <a class="card status-card" href="/recepcion/ordenes/?status={{ item.code }}{{ status_preserve_query }}">
-                    <span class="code">{{ item.code }}</span>
-                    <span class="label">{{ item.label }}</span>
-                    <span class="value">{{ item.count }}</span>
-                </a>
+{% block content %}
+<div class="stack-lg">
+  <div class="card section">
+    <div class="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
+      <div>
+        <h1 class="mb-1">Panel de servicio</h1>
+        <p class="text-muted mb-0">Filtra y revisa la actividad reciente del taller.</p>
+      </div>
+      <form method="get" class="row g-3 align-items-end w-100 w-lg-auto">
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label" for="filter-q">Buscar</label>
+          <input id="filter-q" type="text" name="q" class="form-control" placeholder="Folio, cliente, modelo" value="{{ q }}">
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2">
+          <label class="form-label" for="filter-status">Estado</label>
+          <select id="filter-status" name="status" class="form-select">
+            <option value="">-- Estado --</option>
+            {% for code, label in status_choices %}
+              <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
-        </section>
-
-        <section class="chart-card">
-            <h2>Ordenes por dia</h2>
-            {% if chart_points %}
-                <svg class="mini-chart" viewBox="0 0 {{ chart_width }} 100" preserveAspectRatio="none" role="img" aria-label="Evolucion de ingresos diarios">
-                    <line x1="0" y1="100" x2="{{ chart_width }}" y2="100" stroke="#cbd5e0" stroke-width="1"></line>
-                    {% for point in chart_points %}
-                        <rect x="{{ point.x }}" y="{{ point.y }}" width="{{ point.width }}" height="{{ point.height }}" fill="#2563eb">
-                            <title>{{ point.label }}: {{ point.value }}</title>
-                        </rect>
-                    {% endfor %}
-                </svg>
-                <div class="chart-labels">
-                    {% for point in chart_points %}
-                        <span>{{ point.label }}</span>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <p class="empty-chart">Sin datos para la grafica.</p>
-            {% endif %}
-        </section>
-
-        <section class="table-card">
-            <h2>Ultimas 10 ordenes (filtradas)</h2>
-            <div class="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Folio</th>
-                            <th>Cliente</th>
-                            <th>Equipo</th>
-                            <th>Estado</th>
-                            <th>Ingreso</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for o in recent_orders %}
-                            <tr>
-                                <td>{{ o.folio }}</td>
-                                <td>{{ o.device.customer.name }}</td>
-                                <td>{{ o.device.brand }} {{ o.device.model }}</td>
-                                <td>{{ o.get_status_display }}</td>
-                                <td>{{ o.checkin_at|localtime|date:"Y-m-d H:i" }}</td>
-                                <td>
-                                    <a href="{% url 'order_detail' pk=o.pk %}">Interno</a> |
-                                    <a href="{% url 'public_status' token=o.token %}" target="_blank" rel="noopener">Publico</a>
-                                </td>
-                            </tr>
-                        {% empty %}
-                            <tr>
-                                <td colspan="6">Sin ordenes recientes dentro del filtro.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2">
+          <label class="form-label" for="filter-assignee">Técnico</label>
+          <select id="filter-assignee" name="assignee" class="form-select">
+            <option value="">-- Técnico --</option>
+            {% for user in staff_users %}
+              <option value="{{ user.id }}" {% if assignee == user.id|stringformat:"s" %}selected{% endif %}>{{ user.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="filter-from">Desde</label>
+          <input id="filter-from" type="date" name="from" value="{{ dfrom }}" class="form-control">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="filter-to">Hasta</label>
+          <input id="filter-to" type="date" name="to" value="{{ dto }}" class="form-control">
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Filtrar</button>
+          <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Limpiar</a>
+        </div>
+      </form>
     </div>
-</body>
-</html>
+  </div>
+
+  <div class="grid grid-2 section">
+    <div class="card text-center">
+      <div class="text-uppercase text-muted small">Total filtrado</div>
+      <div class="fs-2 fw-semibold">{{ total_count }}</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-uppercase text-muted small">Hoy</div>
+      <div class="fs-2 fw-semibold">{{ today_count }}</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-uppercase text-muted small">Últimos 7 días</div>
+      <div class="fs-2 fw-semibold">{{ last7_count }}</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-uppercase text-muted small">Últimos 30 días</div>
+      <div class="fs-2 fw-semibold">{{ last30_count }}</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-uppercase text-muted small">Promedio reparación</div>
+      <div class="fs-2 fw-semibold">{{ avg_days|floatformat:2 }} días</div>
+    </div>
+  </div>
+
+  <div class="grid grid-2 section">
+    {% for item in status_cards %}
+      <a class="card text-decoration-none h-100" href="/recepcion/ordenes/?status={{ item.code }}{{ status_preserve_query }}">
+        <div class="text-uppercase text-muted small">{{ item.label }}</div>
+        <div class="fs-5 fw-semibold">{{ item.count }}</div>
+        <div class="text-muted small">Código {{ item.code }}</div>
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="card section">
+    <h2 class="h5 mb-3">Órdenes por día</h2>
+    {% if chart_points %}
+      <svg class="w-100" style="max-height:220px" viewBox="0 0 {{ chart_width }} 100" preserveAspectRatio="none" role="img" aria-label="Evolución de ingresos diarios">
+        <line x1="0" y1="100" x2="{{ chart_width }}" y2="100" stroke="#cbd5e0" stroke-width="1"></line>
+        {% for point in chart_points %}
+          <rect x="{{ point.x }}" y="{{ point.y }}" width="{{ point.width }}" height="{{ point.height }}" fill="#2563eb">
+            <title>{{ point.label }}: {{ point.value }}</title>
+          </rect>
+        {% endfor %}
+      </svg>
+      <div class="d-flex flex-wrap gap-2 mt-3 text-muted small">
+        {% for point in chart_points %}
+          <span>{{ point.label }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">Sin datos para la gráfica.</p>
+    {% endif %}
+  </div>
+
+  <div class="card section">
+    <h2 class="h5 mb-3">Últimas 10 órdenes (filtradas)</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Cliente</th>
+            <th>Equipo</th>
+            <th>Estado</th>
+            <th>Ingreso</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in recent_orders %}
+            <tr>
+              <td>{{ o.folio }}</td>
+              <td>{{ o.device.customer.name }}</td>
+              <td>{{ o.device.brand }} {{ o.device.model }}</td>
+              <td>{{ o.get_status_display }}</td>
+              <td>{{ o.checkin_at|localtime|date:"Y-m-d H:i" }}</td>
+              <td class="d-flex gap-2">
+                <a class="btn btn-outline-primary btn-sm" href="{% url 'order_detail' pk=o.pk %}">Interno</a>
+                <a class="btn btn-outline-secondary btn-sm" href="{% url 'public_status' token=o.token %}" target="_blank" rel="noopener">Público</a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" class="text-muted text-center">Sin órdenes recientes dentro del filtro.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -2,6 +2,7 @@
 import os
 import dj_database_url
 from dotenv import load_dotenv
+from decimal import Decimal
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -81,6 +82,10 @@ TIME_ZONE = "America/Mexico_City"
 USE_I18N = True
 USE_TZ = True
 
+
+TAX_NAME = "IVA"
+TAX_RATE = Decimal("0.16")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
@@ -94,3 +99,10 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").lower() in ("true", "1")
 LOGIN_URL = "/admin/login/"
 LOGIN_REDIRECT_URL = "/admin/"
 
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+TEST_RUNNER = "django.test.runner.DiscoverRunner"
+COMPANY_NAME = os.getenv('COMPANY_NAME', 'Integrasys')
+COMPANY_LOGO_URL = os.getenv('COMPANY_LOGO_URL', '')
