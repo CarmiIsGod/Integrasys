@@ -13,7 +13,9 @@ urlpatterns = [
 
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
-    path("panel/", views.dashboard, name="dashboard"),
+    path("panel/", views.panel, name="panel"),
+    path("panel/export.csv", views.panel_export_csv, name="panel_export_csv"),
+    path("panel/export_payments.csv", views.panel_export_payments, name="panel_export_payments"),
 
     path("t/<uuid:token>/", views.public_status, name="public_status"),
     path("t/<uuid:token>/qr.png", views.qr, name="qr"),
