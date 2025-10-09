@@ -1,5 +1,6 @@
 ﻿<!doctype html>
 <html lang="es">
+{% load money %}
 <head>
   <meta charset="utf-8">
   <title>Cotizacion {{ order.folio }}</title>
@@ -38,17 +39,17 @@
       <tr>
         <td>{{ item.description }}</td>
         <td>{{ item.qty }}</td>
-        <td>${{ item.unit_price|floatformat:2 }}</td>
-        <td>${{ item.line_total|floatformat:2 }}</td>
+        <td>{{ item.unit_price|money }}</td>
+        <td>{{ item.line_total|money }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
   <div class="totals">
-    <p><b>Subtotal:</b> ${{ subtotal|floatformat:2 }}</p>
-    <p><b>IVA:</b> ${{ tax|floatformat:2 }}</p>
-    <p><b>Total:</b> ${{ total|floatformat:2 }}</p>
+    <p><b>Subtotal:</b> {{ estimate.subtotal|default_if_none:0|money }}</p>
+    <p><b>{{ tax_name }}:</b> {{ estimate.tax|default_if_none:0|money }}</p>
+    <p><b>Total:</b> {{ estimate.total|default_if_none:0|money }}</p>
   </div>
 
   {% if note %}

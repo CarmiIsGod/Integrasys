@@ -1,0 +1,39 @@
+{% if can_charge %}
+<form method="post" action="{% url 'add_payment' order.pk %}" class="row g-2 align-items-end mb-3">
+  {% csrf_token %}
+  <div class="col-sm-4">
+    <label class="form-label">Monto</label>
+    <input type="number" name="amount" step="0.01" min="0.01" required class="form-control">
+  </div>
+  <div class="col-sm-4">
+    <label class="form-label">Metodo</label>
+    <input type="text" name="method" maxlength="30" placeholder="Efectivo / Transferencia" required class="form-control">
+  </div>
+  <div class="col-sm-4">
+    <label class="form-label">Referencia</label>
+    <input type="text" name="reference" maxlength="80" placeholder="Folio, ultimos 4, etc." class="form-control">
+  </div>
+  <div class="col-12 text-end">
+    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-cash-coin"></i> Registrar</button>
+  </div>
+</form>
+{% endif %}
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead class="table-light">
+      <tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th></tr>
+    </thead>
+    <tbody>
+      {% for p in payments %}
+        <tr>
+          <td class="text-muted">{{ p.created_at|date:"Y-m-d H:i" }}</td>
+          <td>${{ p.amount|floatformat:2 }}</td>
+          <td>{{ p.method|default:"&mdash;" }}</td>
+          <td>{{ p.reference|default:"&mdash;" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-muted">Sin pagos registrados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -2,6 +2,7 @@ from django.db import models
 from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.contrib.auth.models import User
+from django.conf import settings
 from django.utils import timezone
 from django.apps import apps
 from decimal import Decimal, ROUND_HALF_UP
@@ -133,21 +134,30 @@ class ServiceOrder(models.Model):
     @property
     def approved_total(self):
         Estimate = apps.get_model(self._meta.app_label, "Estimate")
-        EstimateItem = apps.get_model(self._meta.app_label, "EstimateItem")
-        if not Estimate or not EstimateItem:
-            return Decimal("0.00")
+        if not Estimate:
+            return self._quantize_amount(0)
         try:
             estimate = self.estimate
         except Estimate.DoesNotExist:
-            return Decimal("0.00")
-        aggregation = estimate.items.aggregate(
-            total=models.Sum(
-                models.F("qty") * models.F("unit_price"),
-                output_field=models.DecimalField(max_digits=12, decimal_places=2),
+            return self._quantize_amount(0)
+
+        total_value = getattr(estimate, "total", None)
+        if total_value is not None:
+            return self._quantize_amount(total_value)
+
+        subtotal_raw = 0
+        EstimateItem = apps.get_model(self._meta.app_label, "EstimateItem")
+        if EstimateItem:
+            aggregation = estimate.items.aggregate(
+                total=models.Sum(
+                    models.F("qty") * models.F("unit_price"),
+                    output_field=models.DecimalField(max_digits=12, decimal_places=2),
+                )
             )
-        )
-        total = aggregation.get("total")
-        return self._quantize_amount(total)
+            subtotal_raw = aggregation.get("total") or 0
+        subtotal = self._quantize_amount(subtotal_raw)
+        tax = self._quantize_amount(getattr(estimate, "tax", 0) or 0)
+        return self._quantize_amount(subtotal + tax)
 
     @property
     def approved_estimate_total(self):
@@ -236,6 +246,28 @@ class EstimateItem(models.Model):
 
     def __str__(self):
         return f"{self.description} x{self.qty}"
+
+class Attachment(models.Model):
+    ORDER_KINDS = (
+        ("image", "Image"),
+        ("pdf", "PDF"),
+        ("file", "File"),
+    )
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="attachments", db_index=True)
+    file = models.FileField(upload_to="orders/%Y/%m/%d/")
+    kind = models.CharField(max_length=10, choices=ORDER_KINDS, default="file", db_index=True)
+    is_public = models.BooleanField(default=False)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        folio = getattr(self.order, "folio", None)
+        if folio:
+            return f"{folio} - {self.file.name}"
+        return f"Attachment {self.pk}"
 
 
 class Notification(models.Model):

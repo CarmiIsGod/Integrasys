@@ -1,0 +1,17 @@
+{% if allowed_next %}
+<div class="d-flex flex-wrap gap-2">
+  {% for code,label in status_choices %}
+    {% if code in allowed_next %}
+      {% if code != "DONE" or is_superuser %}
+        <form method="post" action="{% url 'change_status' order.pk %}" class="d-inline">
+          {% csrf_token %}
+          <input type="hidden" name="target" value="{{ code }}">
+          <button type="submit" class="btn btn-outline-primary btn-sm">{{ label }}</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-muted">No hay transiciones disponibles.</div>
+{% endif %}

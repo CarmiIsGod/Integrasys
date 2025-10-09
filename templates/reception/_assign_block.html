@@ -1,0 +1,19 @@
+{% if can_assign %}
+<form method="post" action="{% url 'assign_tech' order.pk %}">
+  {% csrf_token %}
+  <div class="mb-2">
+    <label class="form-label" for="user_id">Selecciona tecnico</label>
+    <select id="user_id" name="user_id" required class="form-select">
+      <option value="">-- Selecciona tecnico --</option>
+      {% for u in staff_users %}
+        <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="text-end">
+    <button type="submit" class="btn btn-outline-primary btn-sm"><i class="bi bi-person-check"></i> Asignar</button>
+  </div>
+</form>
+{% else %}
+<div class="text-muted">No tienes permisos para asignar tecnicos.</div>
+{% endif %}

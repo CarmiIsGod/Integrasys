@@ -1,0 +1,11 @@
+<pre class="bg-light border rounded p-3 mb-3" style="white-space:pre-wrap">{{ order.notes|default:"(sin notas)" }}</pre>
+<form method="post" action="{% url 'add_note' order.pk %}">
+  {% csrf_token %}
+  <div class="mb-2">
+    <label class="form-label" for="note">Nueva nota</label>
+    <textarea id="note" name="note" rows="3" placeholder="Agregar nota..." required class="form-control"></textarea>
+  </div>
+  <div class="text-end">
+    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-save"></i> Guardar nota</button>
+  </div>
+</form>

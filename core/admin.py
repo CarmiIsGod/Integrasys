@@ -1,4 +1,5 @@
-﻿from django.contrib import admin
+# -*- coding: utf-8 -*-
+from django.contrib import admin
 from django.utils.html import format_html
 from django.core.mail import send_mail
 from django.conf import settings
@@ -9,7 +10,8 @@ from django.utils import timezone
 
 from .models import (
     Customer, Device, ServiceOrder, StatusHistory,
-    InventoryItem, InventoryMovement, Notification
+    InventoryItem, InventoryMovement, Notification,
+    Attachment,
 )
 
 admin.site.site_header = "Integrasys - Administración"
@@ -23,6 +25,13 @@ admin.site.index_title = "Panel de Recepción y Reparaciones"
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("name", "phone", "email")
     search_fields = ("name", "phone", "email")
+
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    list_display = ("id", "order", "kind", "is_public", "uploaded_by", "created_at")
+    list_filter = ("kind", "is_public", "created_at")
+    search_fields = ("order__folio", "file", "uploaded_by__username")
+    readonly_fields = ("created_at",)
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
@@ -114,7 +123,7 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                 customer = obj.device.customer
                 if customer.email:
                     if obj.status == ServiceOrder.Status.READY_PICKUP:
-                        subject = f"Tu equipo está listo para recoger — Folio {obj.folio}"
+                        subject = f"Tu equipo está listo para recoger - Folio {obj.folio}"
                         body = (
                             f"Hola {customer.name},\n\n"
                             f"Tu equipo está LISTO PARA RECOGER.\n"
@@ -123,7 +132,7 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                         )
                         kind = "ready"
                     else:
-                        subject = f"Requiere autorización de repuestos — Folio {obj.folio}"
+                        subject = f"Requiere autorización de repuestos - Folio {obj.folio}"
                         body = (
                             f"Hola {customer.name},\n\n"
                             f"Tu orden REQUIERE AUTORIZACIÓN DE REPUESTOS.\n"
@@ -139,3 +148,4 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                         Notification.objects.create(order=obj, kind=kind, channel="email", ok=False, payload={"error": str(e)})
 
 admin.site.register([InventoryItem, InventoryMovement, Notification])
+

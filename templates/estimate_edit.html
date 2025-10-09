@@ -1,89 +1,102 @@
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Cotizacion orden {{ order.folio }}</title>
-  <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:960px}
-    h1{margin-bottom:4px}
-    .muted{color:#6b7280}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
-    th{background:#f3f4f6}
-    input,textarea,button{padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px}
-    input[type="number"]{width:100px}
-    button.primary{background:#2563eb;color:#fff;border:0;cursor:pointer}
-    button.link{background:transparent;border:0;color:#ef4444;cursor:pointer}
-    .actions{display:flex;gap:12px;align-items:center;margin-top:12px}
-    a.btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;background:#6b7280;color:#fff}
-    .summary{margin-top:20px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
-    form.inline{display:inline}
-    #add-row{margin-top:8px}
-  </style>
-</head>
-<body>
-  <h1>Cotizacion orden {{ order.folio }}</h1>
-  <div class="muted">Estado: {{ status_label }}</div>
+﻿{% extends "base_nav.html" %}
 
-  {% if messages %}
-    <div style="margin-top:8px">
-      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
-    </div>
-  {% endif %}
+{% load money %}
+{% block title %}Cotización orden {{ order.folio }}{% endblock %}
 
-  <form method="post" id="estimate-form">
-    {% csrf_token %}
-    <table>
-      <thead>
-        <tr>
-          <th>Descripcion</th>
-          <th style="width:100px">Cantidad</th>
-          <th style="width:140px">Precio unitario</th>
-          <th style="width:160px">SKU (opcional)</th>
-          <th style="width:80px">Acciones</th>
-        </tr>
-      </thead>
-      <tbody id="items-body">
-        {% for item in items %}
-        <tr>
-          <td><input name="description" value="{{ item.description }}" required></td>
-          <td><input name="qty" type="number" min="1" value="{{ item.qty }}" required></td>
-          <td><input name="unit_price" type="number" min="0" step="0.01" value="{{ item.unit_price }}" required></td>
-          <td><input name="inventory_sku" list="inventory-skus" value="{{ item.inventory_sku }}" placeholder="SKU"></td>
-          <td><button type="button" class="link remove-row">Quitar</button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <button type="button" id="add-row" class="primary">Agregar partida</button>
+{% block content %}
+<div class="stack-lg">
+  <div class="card section">
+    <h1 class="mb-1">Cotización orden {{ order.folio }}</h1>
+    <div class="text-muted mb-3">Estado: {{ status_label }}</div>
 
-    <div style="margin-top:16px">
-      <label for="note"><b>Nota para el cliente</b></label>
-      <textarea id="note" name="note" rows="3" style="width:100%;margin-top:6px" placeholder="Detalle adicional opcional">{{ note }}</textarea>
-    </div>
+    <form method="post" id="estimate-form" class="stack">
+      {% csrf_token %}
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Descripción</th>
+              <th style="width:100px">Cantidad</th>
+              <th style="width:140px">Precio unitario</th>
+              <th style="width:160px">SKU (opcional)</th>
+              <th style="width:80px">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="items-body">
+            {% for item in items %}
+            <tr>
+              <td><input name="description" value="{{ item.description }}" required class="form-control"></td>
+              <td><input name="qty" type="number" min="1" value="{{ item.qty }}" required class="form-control"></td>
+              <td><input name="unit_price" type="number" min="0" step="0.01" value="{{ item.unit_price }}" required class="form-control"></td>
+              <td><input name="inventory_sku" list="inventory-skus" value="{{ item.inventory_sku }}" placeholder="SKU" class="form-control"></td>
+              <td><button type="button" class="btn btn-link text-danger p-0 remove-row">Quitar</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-    <div class="actions">
-      <button type="submit" class="primary">Guardar cotizacion</button>
-      <a class="btn" href="{% url 'order_detail' order.pk %}">Volver a la orden</a>
-    </div>
-  </form>
+      <button type="button" id="add-row" class="btn btn-outline-primary btn-sm align-self-start">Agregar partida</button>
 
-  <div class="summary">
-    <div><b>Subtotal guardado:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
-    <div><b>IVA guardado:</b> ${{ estimate.tax|floatformat:2 }}</div>
-    <div><b>Total guardado:</b> ${{ estimate.total|floatformat:2 }}</div>
+      <div class="form-check my-2">
+        <input class="form-check-input" type="checkbox" name="include_tax" id="include_tax" {% if include_tax %}checked{% endif %}>
+        <label class="form-check-label" for="include_tax">Incluir {{ tax_name }} ({{ tax_rate_pct }}%)</label>
+      </div>
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">Subtotal</label>
+          <input class="form-control" value="{{ estimate.subtotal|default_if_none:0|money }}" readonly>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">{{ tax_name }}</label>
+          <input class="form-control" value="{{ estimate.tax|default_if_none:0|money }}" readonly>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Total</label>
+          <input class="form-control fw-semibold" value="{{ estimate.total|default_if_none:0|money }}" readonly>
+        </div>
+      </div>
+      <p class="text-muted small mb-3">El pago maximo permitido se valida contra el Total.</p>
+
+      <div>
+        <label class="form-label" for="note"><b>Nota para el cliente</b></label>
+        <textarea id="note" name="note" rows="3" class="form-control" placeholder="Detalle adicional opcional">{{ note }}</textarea>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary">Guardar cotización</button>
+        <a class="btn btn-outline-secondary" href="{% url 'order_detail' order.pk %}">Volver a la orden</a>
+      </div>
+    </form>
   </div>
 
-  <div class="actions" style="margin-top:12px">
-    {% if has_saved_items %}
-      <form method="post" action="{% url 'estimate_send' order.pk %}" class="inline">
-        {% csrf_token %}
-        <button type="submit" class="primary">Enviar cotizacion</button>
-      </form>
-    {% endif %}
-    {% if public_estimate_url %}
-      <a class="btn" href="{{ public_estimate_url }}" target="_blank">Ver enlace publico</a>
-    {% endif %}
+  <div class="grid grid-2 section">
+    <div class="card">
+      <h2 class="h5 mb-3">Resumen guardado</h2>
+      <dl class="row mb-0">
+        <dt class="col-sm-4">Subtotal</dt>
+        <dd class="col-sm-8">{{ estimate.subtotal|default_if_none:0|money }}</dd>
+        <dt class="col-sm-4">{{ tax_name }}</dt>
+        <dd class="col-sm-8">{{ estimate.tax|default_if_none:0|money }}</dd>
+        <dt class="col-sm-4">Total</dt>
+        <dd class="col-sm-8 fw-semibold">{{ estimate.total|default_if_none:0|money }}</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2 class="h5 mb-3">Acciones</h2>
+      <div class="d-flex flex-wrap gap-2">
+        {% if has_saved_items %}
+          <form method="post" action="{% url 'estimate_send' order.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success">Enviar cotización</button>
+          </form>
+        {% endif %}
+        {% if public_estimate_url %}
+          <a class="btn btn-outline-primary" href="{{ public_estimate_url }}" target="_blank">Ver enlace público</a>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <datalist id="inventory-skus">
@@ -94,11 +107,11 @@
 
   <template id="row-template">
     <tr>
-      <td><input name="description" required></td>
-      <td><input name="qty" type="number" min="1" value="1" required></td>
-      <td><input name="unit_price" type="number" min="0" step="0.01" value="0.00" required></td>
-      <td><input name="inventory_sku" list="inventory-skus" placeholder="SKU"></td>
-      <td><button type="button" class="link remove-row">Quitar</button></td>
+      <td><input name="description" required class="form-control"></td>
+      <td><input name="qty" type="number" min="1" value="1" required class="form-control"></td>
+      <td><input name="unit_price" type="number" min="0" step="0.01" value="0.00" required class="form-control"></td>
+      <td><input name="inventory_sku" list="inventory-skus" placeholder="SKU" class="form-control"></td>
+      <td><button type="button" class="btn btn-link text-danger p-0 remove-row">Quitar</button></td>
     </tr>
   </template>
 
@@ -140,5 +153,5 @@
       }
     })();
   </script>
-</body>
-</html>
+</div>
+{% endblock %}
