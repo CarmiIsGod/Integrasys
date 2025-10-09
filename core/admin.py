@@ -1,4 +1,5 @@
-﻿from django.contrib import admin
+# -*- coding: utf-8 -*-
+from django.contrib import admin
 from django.utils.html import format_html
 from django.core.mail import send_mail
 from django.conf import settings
@@ -122,7 +123,7 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                 customer = obj.device.customer
                 if customer.email:
                     if obj.status == ServiceOrder.Status.READY_PICKUP:
-                        subject = f"Tu equipo está listo para recoger — Folio {obj.folio}"
+                        subject = f"Tu equipo está listo para recoger - Folio {obj.folio}"
                         body = (
                             f"Hola {customer.name},\n\n"
                             f"Tu equipo está LISTO PARA RECOGER.\n"
@@ -131,7 +132,7 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                         )
                         kind = "ready"
                     else:
-                        subject = f"Requiere autorización de repuestos — Folio {obj.folio}"
+                        subject = f"Requiere autorización de repuestos - Folio {obj.folio}"
                         body = (
                             f"Hola {customer.name},\n\n"
                             f"Tu orden REQUIERE AUTORIZACIÓN DE REPUESTOS.\n"

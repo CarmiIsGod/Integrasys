@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from django.http import HttpResponse, Http404
 from mimetypes import guess_type
 from django.shortcuts import render, redirect, get_object_or_404
@@ -133,6 +134,55 @@ def build_whatsapp_link(phone: str, text: str) -> str:
         digits = "52" + digits
     return f"https://wa.me/{digits}?text={quote(text)}"
 
+
+def _get_order_by_token_or_404(token):
+    return get_object_or_404(
+        ServiceOrder.objects.select_related("device__customer").prefetch_related("estimate__items"),
+        token=token,
+    )
+
+
+@require_POST
+def public_estimate_approve(request, token):
+    order = _get_order_by_token_or_404(token)
+    est = getattr(order, "estimate", None)
+    if est and not est.approved_at and not est.declined_at:
+        est.approved_at = timezone.now()
+        est.save()
+        customer = order.device.customer
+        if getattr(customer, "email", ""):
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+                send_mail(
+                    f"Cotizacion aprobada - {order.folio}",
+                    f"Gracias por aprobar la cotizacion.\nFolio: {order.folio}",
+                    getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                    [customer.email],
+                    fail_silently=True,
+                )
+            except Exception:
+                pass
+        messages.success(request, "Gracias! Cotizacion aprobada.")
+    else:
+        messages.info(request, "Esta cotizacion ya fue respondida.")
+    return redirect("public_status", token=str(order.token))
+
+
+@require_POST
+def public_estimate_decline(request, token):
+    order = _get_order_by_token_or_404(token)
+    est = getattr(order, "estimate", None)
+    if est and not est.approved_at and not est.declined_at:
+        est.declined_at = timezone.now()
+        reason = (request.POST.get("reason") or "").strip()
+        if reason:
+            est.note = (est.note or "") + f"\n[Declinada por cliente]: {reason}"
+        est.save()
+        messages.success(request, "Hemos registrado tu rechazo. Gracias por la respuesta!")
+    else:
+        messages.info(request, "Esta cotizacion ya fue respondida.")
+    return redirect("public_status", token=str(order.token))
 
 def public_status(request, token):
     try:
@@ -1003,7 +1053,7 @@ def add_attachment(request, pk):
     files = request.FILES.getlist("attachments") or request.FILES.getlist("attachment")
 
     if not files:
-        messages.error(request, "Selecciona 1 o más archivos.")
+        messages.error(request, "Selecciona 1 o mÃ¡s archivos.")
         return redirect("order_detail", pk=pk)
 
     is_public = bool(request.POST.get("is_public"))
@@ -1043,7 +1093,7 @@ def add_attachment(request, pk):
     if uploaded:
         messages.success(request, f"{uploaded} archivo(s) cargado(s).")
     if rejected:
-        messages.error(request, f"{rejected} archivo(s) rechazado(s). Máx 10 MB.")
+        messages.error(request, f"{rejected} archivo(s) rechazado(s). MÃ¡x 10 MB.")
 
     return redirect("order_detail", pk=pk)
 
@@ -1809,3 +1859,69 @@ def panel_export_csv(request):
         ])
 
     return response
+
+@login_required(login_url="/admin/login/")
+@manager_required
+def panel_export_payments(request):
+    """Exporta pagos en CSV filtrados por rango."""
+
+    def _parse_date(raw_value):
+        if not raw_value:
+            return None
+        try:
+            parsed = datetime.strptime(raw_value, "%Y-%m-%d")
+            if settings.USE_TZ:
+                tz = timezone.get_current_timezone()
+                if timezone.is_naive(parsed):
+                    parsed = timezone.make_aware(parsed, tz)
+            return parsed
+        except Exception:
+            return None
+
+    from_value = (request.GET.get("from") or "").strip()
+    to_value = (request.GET.get("to") or "").strip()
+
+    start_dt = _parse_date(from_value)
+    end_dt = _parse_date(to_value)
+    if end_dt:
+        end_dt = end_dt + timedelta(days=1)
+
+    payments_qs = Payment.objects.select_related("order__device__customer")
+    if start_dt:
+        payments_qs = payments_qs.filter(created_at__gte=start_dt)
+    if end_dt:
+        payments_qs = payments_qs.filter(created_at__lt=end_dt)
+    payments_qs = payments_qs.order_by("created_at", "id")
+
+    range_tag = f"{from_value or 'all'}_to_{to_value or 'all'}"
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="payments_{range_tag}.csv"'
+    response.write("\ufeff")
+
+    writer = csv.writer(response)
+    writer.writerow(["fecha", "folio", "cliente", "metodo", "referencia", "monto"])
+
+    def format_dt(value):
+        if not value:
+            return ""
+        try:
+            return timezone.localtime(value).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return str(value)
+
+    for payment in payments_qs:
+        order = payment.order
+        device = getattr(order, "device", None)
+        customer = getattr(device, "customer", None) if device else None
+        writer.writerow([
+            format_dt(payment.created_at),
+            getattr(order, "folio", order.pk),
+            getattr(customer, "name", ""),
+            getattr(payment, "method", ""),
+            getattr(payment, "reference", ""),
+            f"{payment.amount}",
+        ])
+
+    return response
+
+

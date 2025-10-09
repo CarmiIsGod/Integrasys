@@ -31,6 +31,30 @@
     <a class="btn btn-outline-primary btn-sm" href="{% url 'receipt_pdf' token=order.token %}" target="_blank"><i class="bi bi-file-earmark-arrow-down"></i> Descargar recibo (PDF)</a>
   </p>
 
+  {% if order.estimate %}
+    {% if not order.estimate.approved_at and not order.estimate.declined_at %}
+      <div class="card p-3 my-3">
+        <h5 class="mb-2">&iquest;Apruebas la cotizaci&oacute;n?</h5>
+        <div class="d-flex gap-2 align-items-start">
+          <form method="post" action="{% url 'public_estimate_approve' token=order.token %}">
+            {% csrf_token %}
+            <button class="btn btn-success btn-sm">Aprobar</button>
+          </form>
+          <form method="post" action="{% url 'public_estimate_decline' token=order.token %}">
+            {% csrf_token %}
+            <input class="form-control form-control-sm me-2" name="reason" placeholder="Motivo (opcional)" style="max-width:260px">
+            <button class="btn btn-outline-danger btn-sm">Rechazar</button>
+          </form>
+        </div>
+        <p class="text-muted small mt-2">Tu decisi&oacute;n queda registrada de inmediato.</p>
+      </div>
+    {% else %}
+      <div class="alert alert-info my-3">
+        {% if order.estimate.approved_at %}Cotizaci&oacute;n <strong>aprobada</strong> el {{ order.estimate.approved_at|date:"Y-m-d H:i" }}.
+        {% else %}Cotizaci&oacute;n <strong>rechazada</strong> el {{ order.estimate.declined_at|date:"Y-m-d H:i" }}.{% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
   {% if attachments_public %}
   <h3 class="mt-4">Adjuntos</h3>
   <div class="d-flex flex-wrap gap-3">

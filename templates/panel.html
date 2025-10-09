@@ -20,6 +20,7 @@
           <button type="submit" class="btn btn-primary">Aplicar</button>
           <a class="btn btn-outline-secondary" href="?">Ultimos 30 d&iacute;as</a>
           <a class="btn btn-outline-secondary btn-sm" href="{% url "panel_export_csv" %}?from={{ from_date }}&amp;to={{ to_date }}">Exportar CSV</a>
+          <a class="btn btn-outline-info btn-sm" href="{% url "panel_export_payments" %}?from={{ from_date|default:request.GET.from|default:"" }}&amp;to={{ to_date|default:request.GET.to|default:"" }}">Exportar pagos</a>
         </div>
       </form>
     </div>
