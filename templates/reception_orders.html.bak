@@ -36,7 +36,7 @@
     <input type="date" name="to" value="{{ dto }}" title="Hasta (inclusive)">
     <button type="submit">Filtrar</button>
     <a href="{% url 'list_orders' %}" class="btn" style="background:#6b7280">Limpiar</a>
-    <a href="{% url 'export_orders_csv' %}?q={{ query }}&status={{ status }}&assignee={{ assignee }}&from={{ dfrom }}&to={{ dto }}" class="btn">Exportar CSV</a>
+    <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&export=1" class="btn">Exportar CSV</a>
   </form>
 
   <table>

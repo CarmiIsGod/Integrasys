@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path, include, re_path  # INTEGRASYS, , re_path
+from django.urls import path, include, re_path  # INTEGRASYS,
 from core import views as core_views  # INTEGRASYS, re_path, include
 from django.views.generic import RedirectView   
 from core import views
@@ -7,7 +7,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path("reportes/ordenes.csv", core_views.export_orders_csv, name="export_orders_csv"),  # INTEGRASYS
     path("recepcion/orden/<int:pk>/adjuntos/<int:att_id>/eliminar/", core_views.delete_attachment, name="delete_attachment"),  # INTEGRASYS
     # Redirige la raíz al panel de órdenes (puedes cambiar a "/admin/" si prefieres)
     path("", RedirectView.as_view(url="/recepcion/ordenes/", permanent=False)),
@@ -52,7 +51,4 @@ if settings.DEBUG:
 from django.views.static import serve  # INTEGRASYS
 
 # INTEGRASYS: fallback para /media/ (dev) aunque DEBUG sea False
-urlpatterns += [re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT})]
-
-# Fallback para /media/ en dev aunque DEBUG sea False
 urlpatterns += [re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT})]
