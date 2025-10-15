@@ -1,9 +1,13 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path  # INTEGRASYS,
+from core import views as core_views  # INTEGRASYS, re_path, include
 from django.views.generic import RedirectView   
 from core import views
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
+    path("recepcion/orden/<int:pk>/adjuntos/<int:att_id>/eliminar/", core_views.delete_attachment, name="delete_attachment"),  # INTEGRASYS
     # Redirige la raíz al panel de órdenes (puedes cambiar a "/admin/" si prefieres)
     path("", RedirectView.as_view(url="/recepcion/ordenes/", permanent=False)),
     # (Opcional) que /accounts/login/ mande al login del admin
@@ -37,6 +41,14 @@ urlpatterns = [
     path("cotizacion/<uuid:token>/", views.estimate_public, name="estimate_public"),
     path("cotizacion/<uuid:token>/aprobar/", views.estimate_approve, name="estimate_approve"),
     path("cotizacion/<uuid:token>/rechazar/", views.estimate_decline, name="estimate_decline"),
+    path("recepcion/orden/<int:pk>/adjuntos/", views.order_attachments, name="order_attachments"),  # INTEGRASYS
 ]
 
 
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+from django.views.static import serve  # INTEGRASYS
+
+# INTEGRASYS: fallback para /media/ (dev) aunque DEBUG sea False
+urlpatterns += [re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT})]

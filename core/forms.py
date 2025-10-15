@@ -1,5 +1,9 @@
 from django import forms
 
+
+class MultiFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
 class ReceptionForm(forms.Form):
     customer_name = forms.CharField(label="Nombre", max_length=100)
     customer_phone = forms.CharField(label="Teléfono", max_length=30, required=False)
@@ -8,3 +12,19 @@ class ReceptionForm(forms.Form):
     model = forms.CharField(label="Modelo", max_length=50)
     serial = forms.CharField(label="Serie", max_length=100, required=False)
     notes = forms.CharField(label="Descripción / Falla", widget=forms.Textarea, required=False)
+# === INTEGRASYS PATCH: ATTACHMENTS FORM ===
+from django import forms
+from core.models import Attachment
+
+
+class AttachmentForm(forms.ModelForm):
+    class Meta:
+        model = Attachment
+        fields = [
+            name
+            for name in ("file", "caption")
+            if any(getattr(f, "name", "") == name for f in Attachment._meta.fields)
+        ]
+        widgets = {
+            "file": MultiFileInput(attrs={"multiple": True}),
+        }

@@ -1335,3 +1335,62 @@ def estimate_decline(request, token):
         )
 
     return redirect("estimate_public", token=token)
+# === INTEGRASYS PATCH: ATTACHMENTS VIEW ===
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
+from core.models import ServiceOrder, Attachment
+
+try:
+    from core.forms import AttachmentForm
+except Exception:
+    AttachmentForm = None
+
+
+@login_required
+def order_attachments(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    if request.method == "POST":
+        files = request.FILES.getlist("file")
+        caption = request.POST.get("caption", "")
+        if not files:
+            messages.warning(request, "Selecciona al menos un archivo.")
+            return redirect("order_attachments", pk=order.pk)
+        created = 0
+        for uploaded in files:
+            data = {"service_order": order, "file": uploaded}
+            if any(getattr(field, "name", None) == "caption" for field in Attachment._meta.fields):
+                data["caption"] = caption
+            Attachment.objects.create(**data)
+            created += 1
+        messages.success(request, f"Subidos {created} adjunto(s).")
+        return redirect("order_attachments", pk=order.pk)
+    existing = Attachment.objects.filter(service_order=order).order_by("-id")
+    return render(
+        request,
+        "recepcion/order_attachments.html",
+        {
+            "order": order,
+            "attachments": existing,
+            "form": AttachmentForm() if AttachmentForm else None,
+        },
+    )
+
+# === INTEGRASYS PATCH: delete_attachment ===
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+from django.apps import apps
+
+Attachment = apps.get_model('core', 'Attachment')
+ServiceOrder = apps.get_model('core', 'ServiceOrder')
+
+@login_required
+@require_POST
+def delete_attachment(request, pk, att_id):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    att = get_object_or_404(Attachment, pk=att_id, service_order=order)
+    att.delete()
+    messages.success(request, "Adjunto eliminado.")
+    return redirect("order_attachments", pk=order.pk)

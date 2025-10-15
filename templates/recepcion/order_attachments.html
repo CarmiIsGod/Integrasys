@@ -1,0 +1,32 @@
+{% load static %}
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Adjuntos Orden #{{ order.id }}</title></head>
+<body>
+  <!-- INTEGRASYS PATCH: messages -->
+  {% if messages %}
+    <ul>
+    {% for m in messages %}
+      <li>{{ m }}</li>
+    {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h1>Adjuntar archivos a la Orden #{{ order.id }}</h1>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <p><label>Comentario (opcional): <input type="text" name="caption"></label></p>
+    <p><input type="file" name="file" multiple required></p>
+    <button type="submit">Subir</button>
+  </form>
+  <h2>Adjuntos existentes</h2>
+  <ul>
+    {% for attachment in attachments %}
+      <li><a href="{{ attachment.file.url }}" target="_blank">{{ attachment.file.name }}</a>{% if attachment.caption %} - {{ attachment.caption }}{% endif %}</li>
+    {% empty %}
+      <li>Sin adjuntos aun.</li>
+    {% endfor %}
+  </ul>
+  <p><a href="/recepcion/ordenes/">Volver</a></p>
+</body>
+</html>

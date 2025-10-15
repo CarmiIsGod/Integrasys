@@ -250,3 +250,13 @@ class Notification(models.Model):
 
 
 
+
+# === INTEGRASYS PATCH: Attachment model ===
+class Attachment(models.Model):
+    service_order = models.ForeignKey('ServiceOrder', related_name='attachments', on_delete=models.CASCADE)
+    file = models.FileField(upload_to='attachments/%Y/%m/%d/')
+    caption = models.CharField(max_length=255, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.file.name if self.file else 'Attachment'} (order #{self.service_order_id})"

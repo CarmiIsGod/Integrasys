@@ -139,3 +139,12 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                         Notification.objects.create(order=obj, kind=kind, channel="email", ok=False, payload={"error": str(e)})
 
 admin.site.register([InventoryItem, InventoryMovement, Notification])
+
+from core.models import Attachment
+
+# === INTEGRASYS PATCH: Attachment admin ===
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    list_display = ("id", "service_order", "file", "caption", "uploaded_at")
+    search_fields = ("caption", "file")
+    list_filter = ("uploaded_at",)

@@ -94,3 +94,6 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").lower() in ("true", "1")
 LOGIN_URL = "/admin/login/"
 LOGIN_REDIRECT_URL = "/admin/"
 
+# === INTEGRASYS PATCH: MEDIA ===
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
