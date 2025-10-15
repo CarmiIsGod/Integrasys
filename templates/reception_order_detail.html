@@ -42,6 +42,7 @@
         <a class="btn" href="{{ public_url }}" target="_blank">Ver publico</a>
         <a class="btn secondary" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
         {% if wa_link %}<a class="btn success" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+        <a class="btn secondary" href="{% url 'order_attachments' order.pk %}">Adjuntar archivos</a>
       </div>
     </div>
     <div class="card">
