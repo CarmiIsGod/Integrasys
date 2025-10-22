@@ -1,4 +1,4 @@
-from django.http import HttpResponse, Http404
+﻿from django.http import HttpResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -22,9 +22,11 @@ import qrcode
 from datetime import datetime, timedelta, time
 import csv
 import re
+import mimetypes
+from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from .forms import ReceptionForm
+from .forms import ReceptionForm, InventoryItemForm, AttachmentForm
 from .models import (
     Customer,
     Device,
@@ -36,6 +38,7 @@ from .models import (
     Estimate,
     EstimateItem,
     Payment,
+    Attachment,
 )
 
 
@@ -403,6 +406,70 @@ def receive_stock(request):
 
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
+def inventory_create(request):
+    if request.method == "POST":
+        form = InventoryItemForm(request.POST)
+        if form.is_valid():
+            item = form.save()
+            messages.success(request, f"SKU {item.sku} creado.")
+            return redirect("inventory_list")
+    else:
+        form = InventoryItemForm()
+    context = {
+        "form": form,
+        "title": "Nuevo item de inventario",
+        "item": None,
+        "is_edit": False,
+    }
+    return render(request, "inventory_form.html", context)
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+def inventory_update(request, pk):
+    item = get_object_or_404(InventoryItem, pk=pk)
+    if request.method == "POST":
+        form = InventoryItemForm(request.POST, instance=item)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"SKU {item.sku} actualizado.")
+            return redirect("inventory_list")
+    else:
+        form = InventoryItemForm(instance=item)
+    context = {
+        "form": form,
+        "title": f"Editar {item.sku}",
+        "item": item,
+        "is_edit": True,
+    }
+    return render(request, "inventory_form.html", context)
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+def inventory_delete(request, pk):
+    item = get_object_or_404(InventoryItem, pk=pk)
+    has_movements = InventoryMovement.objects.filter(item=item).exists()
+    if request.method == "POST":
+        if has_movements:
+            messages.error(
+                request,
+                "No puedes eliminar un item con movimientos registrados.",
+            )
+            return redirect("inventory_update", pk=item.pk)
+        sku = item.sku
+        item.delete()
+        messages.success(request, f"SKU {sku} eliminado.")
+        return redirect("inventory_list")
+    context = {
+        "item": item,
+        "has_movements": has_movements,
+    }
+    return render(request, "inventory_confirm_delete.html", context)
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
 def list_orders(request):
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
@@ -698,6 +765,100 @@ def add_payment(request, pk):
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 @require_POST
+def change_status_auth(request, pk):
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("device__customer"),
+        pk=pk,
+    )
+
+    allowed_next = ALLOWED.get(order.status, [])
+    if ServiceOrder.Status.REQUIRES_AUTH not in allowed_next:
+        messages.error(request, "Transicion de estado invalida.")
+        return redirect("order_detail", pk=order.pk)
+
+    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+        messages.error(request, "No tienes permiso para solicitar autorizacion.")
+        return redirect("order_detail", pk=order.pk)
+
+    estimate, _ = Estimate.objects.get_or_create(order=order)
+
+    order.status = ServiceOrder.Status.REQUIRES_AUTH
+    order.save(update_fields=["status"])
+
+    StatusHistory.objects.create(order=order, status=ServiceOrder.Status.REQUIRES_AUTH, author=request.user)
+
+    email = (order.device.customer.email or "").strip()
+    payload = {}
+    send_ok = False
+    error_message = None
+
+    if email:
+        public_status_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+        public_estimate_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+        has_items = estimate.items.exists()
+        payload = {
+            "to": email,
+            "public_status": public_status_url,
+            "public_estimate": public_estimate_url,
+            "has_items": has_items,
+        }
+        subject = f"Orden {order.folio} requiere autorizacion"
+        body_lines = [
+            f"Hola {order.device.customer.name},",
+            "",
+            f"Tu orden {order.folio} requiere autorizacion para continuar con el servicio.",
+        ]
+        if has_items:
+            body_lines.append(f"Revisa y autoriza la cotizacion en: {public_estimate_url}")
+        else:
+            body_lines.append("Actualizaremos la cotizacion en breve. Mientras tanto, consulta el estado aqui:")
+            body_lines.append(public_status_url)
+        body_lines.append("")
+        body_lines.append("Si tienes dudas, contactanos.")
+        message = "\n".join(body_lines)
+        try:
+            send_count = send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+            send_ok = send_count > 0
+        except Exception as exc:
+            error_message = str(exc)
+    else:
+        payload = {"error": "missing_email"}
+        messages.warning(request, "El cliente no tiene correo registrado; agrega uno para notificar.")
+
+    if error_message:
+        payload["error"] = error_message
+
+    Notification.objects.create(
+        order=order,
+        kind="email",
+        channel="status_auth",
+        ok=send_ok,
+        payload=payload,
+    )
+
+    if send_ok:
+        messages.success(request, "Orden marcada como Requiere autorizacion y se notifico al cliente.")
+    else:
+        if email:
+            messages.warning(
+                request,
+                "Orden marcada como Requiere autorizacion, pero ocurrio un error al enviar el correo.",
+            )
+        else:
+            messages.info(request, "Orden marcada como Requiere autorizacion sin notificacion por email.")
+
+    return redirect("estimate_edit", pk=order.pk)
+
+
+@login_required(login_url="/admin/login/")
+@user_passes_test(staff_required)
+@require_POST
 def change_status(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     target = request.POST.get("target")
@@ -706,6 +867,10 @@ def change_status(request, pk):
     if target not in allowed:
         messages.error(request, "Transicion de estado invalida.")
         return redirect("list_orders")
+
+    if target == ServiceOrder.Status.REQUIRES_AUTH:
+        messages.error(request, "Usa el flujo de autorizacion dedicado.")
+        return redirect("order_detail", pk=order.pk)
 
     if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
         if order.assigned_to_id != request.user.id:
@@ -1336,66 +1501,129 @@ def estimate_decline(request, token):
 
     return redirect("estimate_public", token=token)
 # === INTEGRASYS PATCH: ATTACHMENTS VIEW ===
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect, render
-from core.models import ServiceOrder, Attachment
+ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+ATTACHMENT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+ATTACHMENT_ALLOWED_EXTENSIONS = ATTACHMENT_IMAGE_EXTENSIONS | {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"}
+ATTACHMENT_ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+}
+ATTACHMENT_IMAGE_PREFIXES = ("image/",)
 
-try:
-    from core.forms import AttachmentForm
-except Exception:
-    AttachmentForm = None
+
+def _attachment_allowed(uploaded):
+    name = (getattr(uploaded, "name", "") or "").strip()
+    ext = Path(name).suffix.lower()
+    content_type = (getattr(uploaded, "content_type", "") or "").lower()
+    guessed, _ = mimetypes.guess_type(name)
+    candidates = [content_type, (guessed or "").lower()]
+    if any(ct.startswith(ATTACHMENT_IMAGE_PREFIXES) for ct in candidates if ct):
+        return True
+    if any(ct in ATTACHMENT_ALLOWED_MIME_TYPES for ct in candidates if ct):
+        return True
+    if ext in ATTACHMENT_ALLOWED_EXTENSIONS:
+        return True
+    return False
 
 
-@login_required
+def _attachment_is_image(name):
+    return Path(name or "").suffix.lower() in ATTACHMENT_IMAGE_EXTENSIONS
+
+
+def _format_bytes(total):
+    try:
+        size = float(total)
+    except (TypeError, ValueError):
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+@login_required(login_url="/admin/login/")
 def order_attachments(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
+    caption_value = (request.POST.get("caption") or "").strip()
     if request.method == "POST":
         files = request.FILES.getlist("file")
-        caption = request.POST.get("caption", "")
         if not files:
             messages.warning(request, "Selecciona al menos un archivo.")
             return redirect("order_attachments", pk=order.pk)
-        created = 0
+        valid_files = []
+        rejected = []
+        max_size_mb = ATTACHMENT_MAX_BYTES // (1024 * 1024)
         for uploaded in files:
+            file_name = getattr(uploaded, "name", "archivo")
+            size = getattr(uploaded, "size", 0) or 0
+            if size > ATTACHMENT_MAX_BYTES:
+                rejected.append(f"{file_name}: excede {max_size_mb} MB.")
+                continue
+            if not _attachment_allowed(uploaded):
+                rejected.append(f"{file_name}: tipo no permitido.")
+                continue
+            valid_files.append(uploaded)
+        if not valid_files:
+            for msg_text in rejected:
+                messages.error(request, msg_text)
+            return redirect("order_attachments", pk=order.pk)
+        created = 0
+        for uploaded in valid_files:
             data = {"service_order": order, "file": uploaded}
-            if any(getattr(field, "name", None) == "caption" for field in Attachment._meta.fields):
-                data["caption"] = caption
+            if hasattr(Attachment, "caption"):
+                data["caption"] = caption_value
             Attachment.objects.create(**data)
             created += 1
+        if rejected:
+            for msg_text in rejected:
+                messages.warning(request, f"No se adjunto {msg_text}")
         messages.success(request, f"Subidos {created} adjunto(s).")
         return redirect("order_attachments", pk=order.pk)
-    existing = Attachment.objects.filter(service_order=order).order_by("-id")
-    return render(
-        request,
-        "recepcion/order_attachments.html",
-        {
-            "order": order,
-            "attachments": existing,
-            "form": AttachmentForm() if AttachmentForm else None,
-        },
-    )
 
-# === INTEGRASYS PATCH: delete_attachment ===
-from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect
-from django.contrib import messages
-from django.apps import apps
+    attachments = list(Attachment.objects.filter(service_order=order).order_by("-id"))
+    for att in attachments:
+        file_obj = getattr(att, "file", None)
+        raw_name = getattr(file_obj, "name", "") if file_obj else ""
+        name = Path(raw_name or "").name
+        size_value = getattr(file_obj, "size", 0) if file_obj else 0
+        att.filename = name or raw_name
+        att.size_display = _format_bytes(size_value)
+        att.is_image = _attachment_is_image(name)
 
-Attachment = apps.get_model('core', 'Attachment')
-ServiceOrder = apps.get_model('core', 'ServiceOrder')
+    accept_attr = ",".join(sorted(ATTACHMENT_ALLOWED_EXTENSIONS))
+    form = AttachmentForm() if AttachmentForm else None
+    context = {
+        "order": order,
+        "attachments": attachments,
+        "form": form,
+        "max_size_mb": ATTACHMENT_MAX_BYTES // (1024 * 1024),
+        "allowed_extensions": ", ".join(sorted(e.lstrip(".").upper() for e in ATTACHMENT_ALLOWED_EXTENSIONS)),
+        "accept_attr": accept_attr,
+    }
+    return render(request, "recepcion/order_attachments.html", context)
 
-@login_required
+
+@login_required(login_url="/admin/login/")
 @require_POST
 def delete_attachment(request, pk, att_id):
     order = get_object_or_404(ServiceOrder, pk=pk)
-    att = get_object_or_404(Attachment, pk=att_id, service_order=order)
-    att.delete()
+    attachment = get_object_or_404(Attachment, pk=att_id, service_order=order)
+    stored_file = attachment.file
+    if stored_file:
+        stored_file.delete(save=False)
+    attachment.delete()
     messages.success(request, "Adjunto eliminado.")
     return redirect("order_attachments", pk=order.pk)
 
-# === INTEGRASYS: Exportación CSV de órdenes ===
+# === INTEGRASYS: ExportaciÃ³n CSV de Ã³rdenes ===
 @login_required
 @user_passes_test(lambda u: u.is_staff or u.is_superuser)
 def export_orders_csv(request):
@@ -1437,4 +1665,38 @@ def export_orders_csv(request):
         estado  = o.get_status_display() if hasattr(o, "get_status_display") else getattr(o, "status", "")
         ingreso = o.checkin_at.strftime("%Y-%m-%d %H:%M") if getattr(o, "checkin_at", None) else ""
         w.writerow([o.id, o.folio, cliente, equipo, serie, estado, ingreso])
+    return resp
+
+# === Inventory CSV export (robust) ===
+@login_required
+@user_passes_test(lambda u: u.is_staff or u.is_superuser)
+def export_inventory_csv(request):
+    # Import local para evitar problemas de orden de carga
+    from .models import InventoryItem
+
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = 'attachment; filename="inventario.csv"'
+    w = csv.writer(resp)
+
+    w.writerow(["SKU", "Nombre", "Stock", "Mínimo", "Costo", "Precio", "Actualizado"])
+
+    qs = InventoryItem.objects.all().order_by("sku")
+    for it in qs:
+        sku   = getattr(it, "sku", "")
+        name  = getattr(it, "name", "")
+        qty   = getattr(it, "qty", "")
+        min_q = getattr(it, "min_qty", "")
+        cost  = getattr(it, "unit_cost", "")
+        price = getattr(it, "unit_price", "")
+        upd   = ""
+        upd_dt = getattr(it, "updated_at", None)
+        if upd_dt:
+            try:
+                from django.utils import timezone
+                upd = timezone.localtime(upd_dt).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                upd = str(upd_dt)
+
+        w.writerow([sku, name, qty, min_q, cost, price, upd])
+
     return resp
