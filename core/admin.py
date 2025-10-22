@@ -23,11 +23,12 @@ admin.site.index_title = "Panel de Recepción y Reparaciones"
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("name", "phone", "email")
     search_fields = ("name", "phone", "email")
-
+    
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
     list_display = ("customer", "brand", "model", "serial")
     search_fields = ("serial", "customer__name", "brand", "model")
+    exclude = ("notes",)
 
 class StatusHistoryInline(admin.TabularInline):
     model = StatusHistory
