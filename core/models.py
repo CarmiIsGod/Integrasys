@@ -271,34 +271,34 @@ class Attachment(models.Model):
     def __str__(self):
         return f"{self.file.name if self.file else 'Attachment'} (order #{self.service_order_id})"
 
-
 # === INTEGRASYS LOW STOCK SIGNAL ===
 try:
-InventoryMovementModel = apps.get_model('core','InventoryMovement')
-NotificationModel = apps.get_model('core','Notification')
+    InventoryMovementModel = apps.get_model('core','InventoryMovement')
+    NotificationModel = apps.get_model('core','Notification')
 except Exception:
-    InventoryMovement = None
-    Notification = None
+    InventoryMovementModel = None
+    NotificationModel = None
 
-if InventoryMovement is not None:
+if InventoryMovementModel is not None:
     @receiver(post_save, sender=InventoryMovementModel)
     def _integrasys_notify_low_stock(sender, instance, created, **kwargs):
         if not created:
             return
-        item = getattr(instance, "item", None)
+        item = getattr(instance, 'item', None)
         if item is None:
             return
         try:
-            qty = getattr(item, "qty", 0) or 0
-            min_qty = getattr(item, "min_qty", 0) or 0
+            qty = getattr(item, 'qty', 0) or 0
+            min_qty = getattr(item, 'min_qty', 0) or 0
         except Exception:
-            qty = 0; min_qty = 0
+            qty = 0
+            min_qty = 0
         if qty > min_qty:
             return  # no está bajo
 
-        sku = getattr(item, "sku", "")
-        name = getattr(item, "name", "")
-        location = getattr(item, "location", None) or "-"
+        sku = getattr(item, 'sku', '')
+        name = getattr(item, 'name', '')
+        location = getattr(item, 'location', None) or '-'
         subject = f"Stock bajo: {sku} - {name} (qty {qty} ≤ min {min_qty})"
         body = (
             f"Inventario bajo para {name} ({sku}).\n"
@@ -309,26 +309,27 @@ if InventoryMovement is not None:
         # Notification interna
         try:
             if NotificationModel is not None:
-                NotificationModel.objects.create(kind="stock", target=sku, subject=subject, body=body, ok=True)
+                NotificationModel.objects.create(kind='stock', target=sku, subject=subject, body=body, ok=True)
         except Exception:
             pass
         # Destinatarios: ADMINS/MANAGERS o staff con email
         to_emails = []
         try:
-            admins = getattr(settings, "ADMINS", ())
+            admins = getattr(settings, 'ADMINS', ())
             if admins:
                 to_emails = [e for _, e in admins if e]
             if not to_emails:
-                managers = getattr(settings, "MANAGERS", ())
+                managers = getattr(settings, 'MANAGERS', ())
                 if managers:
                     to_emails = [e for _, e in managers if e]
             if not to_emails:
                 User = get_user_model()
-                to_emails = list(User.objects.filter(is_staff=True).exclude(email="").values_list("email", flat=True)[:5])
+                to_emails = list(User.objects.filter(is_staff=True).exclude(email='').values_list('email', flat=True)[:5])
         except Exception:
             to_emails = []
         if to_emails:
             try:
-                send_mail(subject, body, getattr(settings, "DEFAULT_FROM_EMAIL", None), to_emails, fail_silently=True)
+                send_mail(subject, body, getattr(settings, 'DEFAULT_FROM_EMAIL', None), to_emails, fail_silently=True)
             except Exception:
                 pass
+
