@@ -13,8 +13,7 @@ class ReceptionForm(forms.Form):
     serial = forms.CharField(label="Serie", max_length=100, required=False)
     notes = forms.CharField(label="Descripción / Falla", widget=forms.Textarea, required=False)
 # === INTEGRASYS PATCH: ATTACHMENTS FORM ===
-from django import forms
-from core.models import Attachment
+from core.models import Attachment, InventoryItem
 
 
 class AttachmentForm(forms.ModelForm):
@@ -28,3 +27,26 @@ class AttachmentForm(forms.ModelForm):
         widgets = {
             "file": MultiFileInput(attrs={"multiple": True}),
         }
+
+
+class InventoryItemForm(forms.ModelForm):
+    class Meta:
+        model = InventoryItem
+        fields = ["sku", "name", "qty", "min_qty", "location"]
+        widgets = {
+            "sku": forms.TextInput(attrs={"autofocus": True}),
+            "qty": forms.NumberInput(attrs={"min": 0}),
+            "min_qty": forms.NumberInput(attrs={"min": 0}),
+        }
+
+    def clean_sku(self):
+        sku = self.cleaned_data.get("sku", "")
+        return sku.strip().upper()
+
+    def clean_name(self):
+        name = self.cleaned_data.get("name", "")
+        return name.strip()
+
+    def clean_location(self):
+        location = self.cleaned_data.get("location", "")
+        return location.strip()

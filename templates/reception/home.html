@@ -1,0 +1,55 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Recepción | Integrasys</title>
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:16px;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
+    .card h3{margin:0 0 6px;font-size:18px;color:#1d4ed8;}
+    .muted{color:#64748b;font-size:14px;margin:0 0 10px;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    form{display:grid;gap:10px;margin-top:8px;}
+    form input{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+    form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
+    .link-ghost{background:#e2e8f0;color:#1e293b;}
+  </style>
+</head>
+<body>
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <h1>Recepción</h1>
+    <p class="muted">Accesos rápidos para el equipo de recepción.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Nueva orden</h3>
+        <p class="muted">Captura los datos del cliente y su equipo.</p>
+        <a class="btn" href="{% url 'reception_new_order' %}">Crear orden</a>
+      </div>
+      <div class="card">
+        <h3>Órdenes</h3>
+        <form method="get" action="{% url 'list_orders' %}">
+          <input name="q" placeholder="Buscar folio, cliente, modelo...">
+          <button type="submit">Buscar</button>
+        </form>
+        <a class="btn link-ghost" href="{% url 'list_orders' %}" style="margin-top:8px;">Ver listado</a>
+      </div>
+      <div class="card">
+        <h3>Inventario</h3>
+        <p class="muted">Consulta existencias y registra entradas.</p>
+        <a class="btn" href="{% url 'inventory_list' %}">Abrir inventario</a>
+      </div>
+      <div class="card">
+        <h3>Reportes</h3>
+        <p class="muted">Descarga reportes actualizados en CSV.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <a class="btn link-ghost" href="{% url 'export_orders_csv' %}">Órdenes CSV</a>
+          <a class="btn link-ghost" href="{% url 'export_inventory_csv' %}">Inventario CSV</a>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

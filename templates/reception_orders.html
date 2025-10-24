@@ -1,117 +1,164 @@
-<!doctype html> 
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Órdenes de servicio</title>
+  <title>Órdenes de servicio | Integrasys</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #e5e7eb}
-    th{text-align:left;background:#f9fafb}
-    .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-    input,select,button{padding:8px;border:1px solid #d1d5db;border-radius:6px}
-    a.btn, button{background:#2563eb;color:#fff;text-decoration:none;border:0}
-    a.btn{display:inline-block;padding:8px 12px;border-radius:6px}
-    .muted{color:#6b7280}
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    .muted{color:#64748b;font-size:14px;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
+    form{display:grid;gap:12px;}
+    form label{font-weight:600;color:#1e293b;font-size:14px;}
+    form input,form select{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+    form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
+    table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
+    th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
+    th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
+    tbody tr:nth-child(odd){background:#f8fbff;}
+    tbody tr:hover{background:#eef4ff;}
+    .actions-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+    .pill{display:inline-block;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px;}
+    .pager{display:flex;justify-content:space-between;align-items:center;margin-top:18px;color:#64748b;}
   </style>
 </head>
 <body>
-  <h1>Órdenes de servicio</h1>
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <h1>Órdenes de servicio</h1>
+        <p class="muted">Filtra y gestiona las órdenes activas desde recepción.</p>
+      </div>
+      <a class="btn btn-ghost" href="{% url 'reception_home' %}">&larr; Inicio</a>
+    </div>
 
-  <form method="get" class="row">
-    <input type="text" name="q" placeholder="Buscar (folio, cliente, modelo, serie)" value="{{ query }}">
-    <select name="status">
-      <option value="">-- Estado --</option>
-      {% for code,label in status_choices %}
-        <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    <select name="assignee">
-      <option value="">-- Técnico --</option>
-      {% for u in staff_users %}
-        <option value="{{ u.id }}" {% if assignee|stringformat:"s" == u.id|stringformat:"s" %}selected{% endif %}>{{ u.get_username }}</option>
-      {% endfor %}
-    </select>
-    <input type="date" name="from" value="{{ dfrom }}" title="Desde (fecha de ingreso)">
-    <input type="date" name="to" value="{{ dto }}" title="Hasta (inclusive)">
-    <button type="submit">Filtrar</button>
-    <a href="{% url 'list_orders' %}" class="btn" style="background:#6b7280">Limpiar</a>
-    <a href="{% url 'export_orders_csv' %}?q={{ query }}&status={{ status }}&assignee={{ assignee }}&from={{ dfrom }}&to={{ dto }}" class="btn">Exportar CSV</a>
-  </form>
+    <section class="card" style="margin-bottom:18px;">
+      <form method="get">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+          <label>Folio / cliente / modelo / serie
+            <input type="text" name="q" placeholder="Buscar" value="{{ query }}">
+          </label>
+          <label>Estado
+            <select name="status">
+              <option value="">Todos</option>
+              {% for code,label in status_choices %}
+                <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Técnico
+            <select name="assignee">
+              <option value="">Todos</option>
+              {% for u in staff_users %}
+                <option value="{{ u.id }}" {% if assignee|stringformat:"s" == u.id|stringformat:"s" %}selected{% endif %}>{{ u.get_username }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Desde
+            <input type="date" name="from" value="{{ dfrom }}">
+          </label>
+          <label>Hasta
+            <input type="date" name="to" value="{{ dto }}">
+          </label>
+        </div>
+        <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;">
+          <button type="submit">Aplicar filtros</button>
+          <a href="{% url 'list_orders' %}" class="btn btn-ghost">Limpiar</a>
+          <a href="{% url 'export_orders_csv' %}?q={{ query }}&amp;status={{ status }}&amp;assignee={{ assignee }}&amp;from={{ dfrom }}&amp;to={{ dto }}" class="btn btn-ghost">Exportar CSV</a>
+        </div>
+      </form>
+    </section>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Folio</th>
-        <th>Cliente</th>
-        <th>Equipo</th>
-        <th>Estado</th>
-        <th>Ingreso</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for o in page_obj.object_list %}
+    <table>
+      <thead>
         <tr>
-          <td>{{ o.folio }}</td>
-          <td>{{ o.device.customer.name }}<div class="muted">Tec: {{ o.assigned_to|default:"—" }}</div></td>
-          <td>{{ o.device.brand }} {{ o.device.model }} <span class="muted">({{ o.device.serial }})</span></td>
-          <td>{{ o.get_status_display }}</td>
-          <td>{{ o.checkin_at|date:"Y-m-d H:i" }}</td>
-          <td>
-            <a href="{% url 'public_status' token=o.token %}" target="_blank">Ver público</a>
-            |
-            <a href="{% url 'receipt_pdf' token=o.token %}" target="_blank">PDF</a>
-            {% if o.whatsapp_link %} | <a href="{{ o.whatsapp_link }}" target="_blank">WhatsApp</a>{% endif %}
-            | <a href="{% url 'order_detail' o.pk %}" target="_blank">Detalle</a>
-            | <a href="{% url 'order_attachments' o.pk %}" target="_blank">Adjuntos</a>
-            {% if o.attachments.count %}
-              <span class="muted">({{ o.attachments.count }})</span>
-            {% endif %}
-            <form method="post" action="{% url 'add_part' o.pk %}" style="display:inline; margin-left:6px">
-              {% csrf_token %}
-              <input name="sku" placeholder="SKU" size="6" required>
-              <input name="qty" type="number" min="1" value="1" style="width:65px" required>
-              <input name="reason" placeholder="Motivo" size="10">
-              <button type="submit">Usar</button>
-            </form>
-
-
-            
-            {% if o.allowed_next %}
-              <div style="margin-top:6px; display:inline-block">
-                {% for code in o.allowed_next %}
-                  {% for c,label in status_choices %}
-                    {% if c == code %}
-                      {% if c != 'DONE' or is_superuser %}
-                        <form method="post" action="{% url 'change_status' o.pk %}" style="display:inline">
-                          {% csrf_token %}
-                          <input type="hidden" name="target" value="{{ code }}">
-                          <button type="submit" style="margin-left:6px">{{ label }}</button>
-                        </form>
-                      {% endif %}
-                    {% endif %}
-                  {% endfor %}
-                {% endfor %}
-              </div>
-            {% endif %}
-          
-          </td>
+          <th>Folio</th>
+          <th>Cliente</th>
+          <th>Equipo</th>
+          <th>Estado</th>
+          <th>Ingreso</th>
+          <th>Acciones</th>
         </tr>
-      {% empty %}
-        <tr><td colspan="6">Sin resultados.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        {% for o in page_obj.object_list %}
+          <tr>
+            <td>{{ o.folio }}</td>
+            <td>
+              {{ o.device.customer.name }}<br>
+              <span class="muted">Tec: {{ o.assigned_to|default:"—" }} · <a href="{% url 'customer_devices' o.device.customer.id %}" target="_blank">Ver dispositivos</a></span>
+            </td>
+            <td>
+              {{ o.device.brand }} {{ o.device.model }}
+              {% if o.device.serial %}<div class="muted">Serie: {{ o.device.serial }}</div>{% endif %}
+            </td>
+            <td>{{ o.get_status_display }}</td>
+            <td>{{ o.checkin_at|date:"Y-m-d H:i" }}</td>
+            <td>
+              <div class="actions-row">
+                <a href="{% url 'public_status' token=o.token %}" target="_blank">Estado público</a>
+                <a href="{% url 'order_detail' o.pk %}" target="_blank">Detalle</a>
+                <a href="{% url 'order_attachments' o.pk %}" target="_blank">Adjuntos{% if o.attachments.count %} ({{ o.attachments.count }}){% endif %}</a>
+              </div>
+              <div class="actions-row">
+                <form method="post" action="{% url 'add_part' o.pk %}" style="display:flex;flex-wrap:wrap;gap:6px;">
+                  {% csrf_token %}
+                  <input name="sku" placeholder="SKU" style="width:110px" required>
+                  <input name="qty" type="number" min="1" value="1" style="width:70px" required>
+                  <input name="reason" placeholder="Motivo" style="width:140px">
+                  <button type="submit" style="background:#0ea5e9;">Usar</button>
+                </form>
+              </div>
+              {% if o.allowed_next %}
+                <div class="actions-row">
+                  {% for code in o.allowed_next %}
+                    {% for c,label in status_choices %}
+                      {% if c == code %}
+                        {% if c != 'DONE' or is_superuser %}
+                          {% if c == 'AUTH' %}
+                            <form method="post" action="{% url 'change_status_auth' o.pk %}">
+                              {% csrf_token %}
+                              <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                            </form>
+                          {% else %}
+                            <form method="post" action="{% url 'change_status' o.pk %}">
+                              {% csrf_token %}
+                              <input type="hidden" name="target" value="{{ code }}">
+                              <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                            </form>
+                          {% endif %}
+                        {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" style="text-align:center;padding:24px;">Sin resultados.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
 
-  <div style="margin-top:12px">
-    {% if page_obj.has_previous %}
-      <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&page={{ page_obj.previous_page_number }}">← Anterior</a>
-    {% endif %}
-    <span class="muted">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
-    {% if page_obj.has_next %}
-      <a href="?q={{ query }}&status={{ status }}&from={{ dfrom }}&to={{ dto }}&page={{ page_obj.next_page_number }}">Siguiente →</a>
-    {% endif %}
-  </div>
+    <div class="pager">
+      {% if page_obj.has_previous %}
+        <a href="?q={{ query }}&amp;status={{ status }}&amp;assignee={{ assignee }}&amp;from={{ dfrom }}&amp;to={{ dto }}&amp;page={{ page_obj.previous_page_number }}">&larr; Anterior</a>
+      {% else %}
+        <span></span>
+      {% endif %}
+      <span>P&aacute;gina {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a href="?q={{ query }}&amp;status={{ status }}&amp;assignee={{ assignee }}&amp;from={{ dfrom }}&amp;to={{ dto }}&amp;page={{ page_obj.next_page_number }}">Siguiente &rarr;</a>
+      {% else %}
+        <span></span>
+      {% endif %}
+    </div>
+  </main>
 </body>
 </html>

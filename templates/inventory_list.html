@@ -1,59 +1,118 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Inventario</title>
+  <title>Inventario | Integrasys</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left}
-    th{background:#f9fafb}
-    .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-    input,button{padding:8px;border:1px solid #d1d5db;border-radius:6px}
-    button{background:#2563eb;color:#fff;border:0}
-    .tag{padding:2px 6px;border-radius:6px;font-size:12px}
-    .warn{background:#fee2e2;color:#991b1b}
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+    .muted{color:#64748b;font-size:14px;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;margin-bottom:18px;}
+    form{display:grid;gap:12px;}
+    form label{font-weight:600;color:#1e293b;font-size:14px;}
+    form input{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+    form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;justify-self:flex-start;}
+    table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
+    th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
+    th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
+    tbody tr:nth-child(odd){background:#f8fbff;}
+    tbody tr:hover{background:#eef4ff;}
+    .pill{display:inline-block;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px;}
   </style>
 </head>
 <body>
-  <h1>Inventario</h1>
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <h1>Inventario</h1>
+        <p class="muted">Consulta existencias, registra entradas y administra refacciones.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="btn btn-ghost" href="{% url 'reception_home' %}">&larr; Inicio</a>
+        <a class="btn btn-ghost" href="{% url 'inventory_create' %}">Nuevo item</a>
+        <a class="btn btn-ghost" href="{% url 'export_inventory_csv' %}">Exportar CSV</a>
+      </div>
+    </div>
 
-  {% if messages %}{% for m in messages %}<div>{{ m }}</div>{% endfor %}{% endif %}
+    {% if messages %}
+      <ul style="list-style:none;padding:0;margin:12px 0;">
+        {% for m in messages %}<li style="background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;">{{ m }}</li>{% endfor %}
+      </ul>
+    {% endif %}
 
-  <form class="row" method="get">
-    <input name="q" placeholder="Buscar (SKU/Nombre/Ubicación)" value="{{ q }}">
-    <label><input type="checkbox" name="low" value="1" {% if low %}checked{% endif %}> Solo bajos</label>
-    <button type="submit">Filtrar</button>
-    <a href="{% url 'inventory_list' %}" style="padding:8px;background:#6b7280;color:#fff;border-radius:6px;text-decoration:none">Limpiar</a>
-  </form>
+    <section class="card">
+      <form method="get">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <label>Buscar SKU / Nombre / Ubicación
+            <input name="q" placeholder="Buscar" value="{{ q }}">
+          </label>
+          <label style="display:flex;align-items:flex-end;gap:8px;">
+            <input type="checkbox" name="low" value="1" {% if low %}checked{% endif %}>
+            <span>Solo con stock bajo</span>
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+          <button type="submit">Filtrar</button>
+          <a href="{% url 'inventory_list' %}" class="btn btn-ghost">Limpiar</a>
+        </div>
+      </form>
+    </section>
 
-  <form class="row" method="post" action="{% url 'receive_stock' %}">
-    {% csrf_token %}
-    <input name="sku" placeholder="SKU" required>
-    <input name="qty" type="number" min="1" value="1" style="width:90px" required>
-    <input name="reason" placeholder="Motivo (opcional)">
-    <button type="submit">Entrada</button>
-  </form>
+    <section class="card">
+      <h2>Registrar entrada rápida</h2>
+      <form method="post" action="{% url 'receive_stock' %}" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">
+        {% csrf_token %}
+        <input name="sku" placeholder="SKU" required style="flex:1 0 150px;">
+        <input name="qty" type="number" min="1" value="1" required style="width:100px;">
+        <input name="reason" placeholder="Motivo (opcional)" style="flex:1 0 220px;">
+        <button type="submit" class="btn btn-ghost">Entrada</button>
+      </form>
+    </section>
 
-  <table>
-    <thead><tr><th>SKU</th><th>Nombre</th><th>Ubicación</th><th>Stock</th><th>Mínimo</th></tr></thead>
-    <tbody>
-      {% for it in items %}
-        <tr>
-          <td>{{ it.sku }}</td>
-          <td>{{ it.name }}</td>
-          <td>{{ it.location|default:"&mdash;" }}</td>
-          <td>
-            {{ it.qty }}
-            {% if it.qty < it.min_qty %}<span class="tag warn">BAJO</span>{% endif %}
-          </td>
-          <td>{{ it.min_qty }}</td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="5">Sin resultados.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <section class="card" style="padding:0;">
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Nombre</th>
+            <th>Ubicación</th>
+            <th>Stock</th>
+            <th>Mínimo</th>
+            <th style="width:150px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+            <tr>
+              <td>{{ it.sku }}</td>
+              <td>{{ it.name }}</td>
+              <td>{{ it.location|default:"—" }}</td>
+              <td>
+                {{ it.qty }}
+                {% if it.qty < it.min_qty %}
+                  <span class="pill">Bajo</span>
+                {% endif %}
+              </td>
+              <td>{{ it.min_qty }}</td>
+              <td>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <a href="{% url 'inventory_update' it.pk %}">Editar</a>
+                  <a href="{% url 'inventory_delete' it.pk %}">Eliminar</a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" style="text-align:center;padding:20px;">Sin resultados.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
 </body>
 </html>
-

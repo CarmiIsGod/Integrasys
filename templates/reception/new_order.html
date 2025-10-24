@@ -1,0 +1,74 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Nueva orden | Integrasys</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    .muted{color:#64748b;font-size:14px;margin:0;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
+    .card h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+    label{display:block;font-weight:600;margin-bottom:4px;color:#1e293b;}
+    input,textarea{width:100%;padding:9px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;box-sizing:border-box;}
+    textarea{resize:vertical;min-height:120px;}
+    .actions{display:flex;gap:8px;align-items:center;margin-top:16px;flex-wrap:wrap;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    button{background:#1d4ed8;color:#fff;border:none;border-radius:999px;padding:9px 16px;font-weight:600;cursor:pointer;}
+    ul.messages{list-style:none;padding:0;margin:12px 0;}
+    ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
+  </style>
+</head>
+<body>
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <div class="actions" style="justify-content:space-between;margin-bottom:12px;">
+      <div>
+        <h1>Nueva orden</h1>
+        <p class="muted">Captura los datos del cliente y del equipo para generar una orden de servicio.</p>
+      </div>
+      <a href="{% url 'reception_home' %}" class="btn btn-ghost">&larr; Inicio</a>
+    </div>
+
+    {% if messages %}
+      <ul class="messages">
+        {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="grid">
+        <div class="card">
+          <h2>Cliente</h2>
+          <label>Nombre*</label>
+          <input name="name" value="{{ prefill.name }}" required placeholder="Nombre completo">
+          <label style="margin-top:12px;">Teléfono</label>
+          <input name="phone" value="{{ prefill.phone }}" placeholder="Opcional">
+          <label style="margin-top:12px;">Email</label>
+          <input type="email" name="email" value="{{ prefill.email }}" placeholder="cliente@correo.com">
+          <p class="muted" style="margin-top:10px;">Si los datos coinciden con un cliente existente se reutilizarán automáticamente.</p>
+        </div>
+        <div class="card">
+          <h2>Equipo</h2>
+          <label>Marca*</label>
+          <input name="brand" value="{{ prefill.brand }}" required>
+          <label style="margin-top:12px;">Modelo*</label>
+          <input name="model" value="{{ prefill.model }}" required>
+          <label style="margin-top:12px;">Serie</label>
+          <input name="serial" value="{{ prefill.serial }}" placeholder="Opcional">
+        </div>
+        <div class="card">
+          <h2>Descripción</h2>
+          <label>Notas</label>
+          <textarea name="notes" placeholder="Falla, accesorios, condición general...">{{ prefill.notes }}</textarea>
+          <button type="submit" style="margin-top:14px;">Crear orden</button>
+        </div>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

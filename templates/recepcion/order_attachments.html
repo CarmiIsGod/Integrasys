@@ -1,32 +1,112 @@
-{% load static %}
-<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Adjuntos Orden #{{ order.id }}</title></head>
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Adjuntos {{ order.folio }} | Integrasys</title>
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+    .muted{color:#64748b;font-size:14px;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;margin-bottom:18px;}
+    form{display:grid;gap:12px;max-width:520px;}
+    form label{font-weight:600;color:#1e293b;font-size:14px;}
+    form input{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+    form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;justify-self:flex-start;}
+    ul.messages{list-style:none;padding:0;margin:12px 0;}
+    ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
+    table{width:100%;border-collapse:collapse;margin-top:12px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
+    th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
+    th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
+    tbody tr:nth-child(odd){background:#f8fbff;}
+    tbody tr:hover{background:#eef4ff;}
+    img.preview{max-width:140px;max-height:100px;border-radius:10px;border:1px solid #e2e8f0;}
+  </style>
+</head>
 <body>
-  <!-- INTEGRASYS PATCH: messages -->
-  {% if messages %}
-    <ul>
-    {% for m in messages %}
-      <li>{{ m }}</li>
-    {% endfor %}
-    </ul>
-  {% endif %}
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <h1>Adjuntos de la orden {{ order.folio }}</h1>
+        <p class="muted">Sube y administra los archivos asociados.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="btn btn-ghost" href="{% url 'order_detail' order.pk %}">&larr; Orden</a>
+        <a class="btn btn-ghost" href="{% url 'order_attachments' order.pk %}">Refrescar</a>
+      </div>
+    </div>
 
-  <h1>Adjuntar archivos a la Orden #{{ order.id }}</h1>
-  <form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    <p><label>Comentario (opcional): <input type="text" name="caption"></label></p>
-    <p><input type="file" name="file" multiple required></p>
-    <button type="submit">Subir</button>
-  </form>
-  <h2>Adjuntos existentes</h2>
-  <ul>
-    {% for attachment in attachments %}
-      <li><a href="{{ attachment.file.url }}" target="_blank">{{ attachment.file.name }}</a>{% if attachment.caption %} - {{ attachment.caption }}{% endif %}</li>
-    {% empty %}
-      <li>Sin adjuntos aun.</li>
-    {% endfor %}
-  </ul>
-  <p><a href="/recepcion/ordenes/">Volver</a></p>
+    {% if messages %}
+      <ul class="messages">
+        {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <section class="card">
+      <h2>Subir archivos</h2>
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label>Comentario (opcional)
+          <input type="text" name="caption" maxlength="255">
+        </label>
+        <label>Selecciona archivos
+          <input type="file" name="file" multiple required{% if accept_attr %} accept="{{ accept_attr }}"{% endif %}>
+        </label>
+        <p class="muted">Máximo {{ max_size_mb }} MB por archivo. Tipos permitidos: {{ allowed_extensions }}.</p>
+        <button type="submit">Subir adjuntos</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Adjuntos existentes</h2>
+      {% if attachments %}
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Vista previa</th>
+                <th>Archivo</th>
+                <th>Comentario</th>
+                <th>Subido</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for att in attachments %}
+                <tr>
+                  <td>
+                    {% if att.is_image %}
+                      <a href="{{ att.file.url }}" target="_blank" rel="noopener">
+                        <img src="{{ att.file.url }}" alt="{{ att.filename }}" class="preview">
+                      </a>
+                    {% else %}
+                      <a href="{{ att.file.url }}" target="_blank" rel="noopener">Ver archivo</a>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <strong>{{ att.filename }}</strong>
+                    <div class="muted">{{ att.size_display }}</div>
+                  </td>
+                  <td>{{ att.caption|default:"—" }}</td>
+                  <td>{{ att.uploaded_at|date:"Y-m-d H:i" }}</td>
+                  <td>
+                    <form method="post" action="{% url 'delete_attachment' order.pk att.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-ghost">Eliminar</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">Sin adjuntos registrados.</p>
+      {% endif %}
+    </section>
+  </main>
 </body>
 </html>

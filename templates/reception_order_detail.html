@@ -1,219 +1,224 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Orden {{ order.folio }}</title>
+  <title>Orden {{ order.folio }} | Integrasys</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
-    .row{display:flex;gap:16px;flex-wrap:wrap}
-    .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;flex:1;min-width:280px}
-    h1,h2{margin:0 0 8px 0}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left}
-    .muted{color:#6b7280}
-    input,textarea,select,button{padding:8px;border:1px solid #d1d5db;border-radius:8px}
-    button{background:#2563eb;color:#fff;border:0;cursor:pointer}
-    a.btn{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px}
-    .success{background:#16a34a}
-    .secondary{background:#6b7280}
-    .inline{display:inline-block}
-    .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-    .actions form{margin:0}
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+    .muted{color:#64748b;font-size:14px;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:18px;}
+    ul.messages{list-style:none;padding:0;margin:12px 0;}
+    ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
+    table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
+    th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
+    th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
+    tbody tr:nth-child(odd){background:#f8fbff;}
+    tbody tr:hover{background:#eef4ff;}
+    form.inline{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+    form.inline input,form.inline textarea,form.inline select{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+    form.inline button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
+    textarea{width:100%;padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;min-height:90px;}
   </style>
-  {% load static %}
-  {% load tz %}
 </head>
 <body>
-  <h1>Orden {{ order.folio }}</h1>
-  {% if messages %}
-    <div>
-      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
-    </div>
-  {% endif %}
-  <div class="row">
-    <div class="card">
-      <h2>Resumen</h2>
-      <div><b>Estatus:</b> {{ order.get_status_display }}</div>
-      <div><b>Ingreso:</b> {{ order.checkin_at|date:"Y-m-d H:i" }}</div>
-      {% if order.checkout_at %}<div><b>Salida:</b> {{ order.checkout_at|date:"Y-m-d H:i" }}</div>{% endif %}
-      <div>Total aprobado: ${{ approved_total|floatformat:2 }} / Pagado: ${{ paid_total|floatformat:2 }} / Saldo: ${{ balance|floatformat:2 }}</div>
-      <div class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</div>
-      <div style="margin-top:8px">
-        <a class="btn" href="{{ public_url }}" target="_blank">Ver publico</a>
-        <a class="btn secondary" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
-        {% if wa_link %}<a class="btn success" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
-        <a class="btn secondary" href="{% url 'order_attachments' order.pk %}">Adjuntar archivos</a>
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <h1>Orden {{ order.folio }}</h1>
+        <p class="muted">Consulta y gestiona toda la información de la orden.</p>
       </div>
+      <a class="btn btn-ghost" href="{% url 'list_orders' %}">&larr; Órdenes</a>
     </div>
-    <div class="card">
-      <h2>Cliente y Equipo</h2>
-      <div><b>Cliente:</b> {{ order.device.customer.name }}</div>
-      <div class="muted">
-        Tel: {{ order.device.customer.phone|default:"-" }} | Email: {{ order.device.customer.email|default:"-" }}
+
+    {% if messages %}
+      <ul class="messages">
+        {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <div class="grid">
+      <div class="card">
+        <h2>Resumen</h2>
+        <p><strong>Estatus:</strong> {{ order.get_status_display }}</p>
+        <p><strong>Ingreso:</strong> {{ order.checkin_at|date:"Y-m-d H:i" }}</p>
+        {% if order.checkout_at %}<p><strong>Salida:</strong> {{ order.checkout_at|date:"Y-m-d H:i" }}</p>{% endif %}
+        <p><strong>Finanzas:</strong> Aprobado ${{ approved_total|floatformat:2 }} · Pagado ${{ paid_total|floatformat:2 }} · Saldo ${{ balance|floatformat:2 }}</p>
+        <p class="muted">Asignado a: {{ order.assigned_to|default:"—" }}</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <a class="btn" href="{{ public_url }}" target="_blank">Estado público</a>
+          <a class="btn btn-ghost" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
+          {% if wa_link %}<a class="btn" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+          <a class="btn btn-ghost" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
+        </div>
       </div>
-      <div style="margin-top:6px">
-        <b>Equipo:</b> {{ order.device.brand }} {{ order.device.model }}
-        {% if order.device.serial %}<span class="muted">({{ order.device.serial }})</span>{% endif %}
+      <div class="card">
+        <h2>Cliente y equipo</h2>
+        <p><strong>Cliente:</strong> {{ order.device.customer.name }}</p>
+        <p class="muted">Tel: {{ order.device.customer.phone|default:"—" }} · Email: {{ order.device.customer.email|default:"—" }}</p>
+        <p style="margin-top:8px;"><strong>Equipo:</strong> {{ order.device.brand }} {{ order.device.model }} {% if order.device.serial %}<span class="muted">(Serie {{ order.device.serial }})</span>{% endif %}</p>
       </div>
-    </div>
-    <div class="card">
-      <h2>Cotizacion</h2>
-      <div><b>Estado:</b> {{ estimate_status }}</div>
-      {% if estimate %}
-        <div><b>Subtotal:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
-        <div><b>IVA:</b> ${{ estimate.tax|floatformat:2 }}</div>
-        <div><b>Total:</b> ${{ estimate.total|floatformat:2 }}</div>
-        {% if estimate.note %}<div class="muted">Nota: {{ estimate.note }}</div>{% endif %}
-      {% else %}
-        <div class="muted">(sin cotizacion)</div>
-      {% endif %}
-      <div class="actions">
-        <a class="btn" href="{% url 'estimate_edit' order.pk %}">Editar cotizacion</a>
-        {% if estimate_has_items and can_send_estimate %}
-
-          <form method="post" action="{% url 'estimate_send' order.pk %}">
-
-            {% csrf_token %}
-
-            <button type="submit">Enviar cotizacion</button>
-
-          </form>
-
+      <div class="card">
+        <h2>Cotización</h2>
+        <p><strong>Estado:</strong> {{ estimate_status }}</p>
+        {% if estimate %}
+          <p>Subtotal: ${{ estimate.subtotal|floatformat:2 }}</p>
+          <p>IVA: ${{ estimate.tax|floatformat:2 }}</p>
+          <p>Total: ${{ estimate.total|floatformat:2 }}</p>
+          {% if estimate.note %}<p class="muted">Nota: {{ estimate.note }}</p>{% endif %}
+          <p class="muted">IVA aplicado: {% if estimate.apply_tax %}Sí{% else %}No{% endif %}</p>
+        {% else %}
+          <p class="muted">(sin cotización)</p>
         {% endif %}
-
-        {% if estimate_public_url %}
-          <a class="btn secondary" href="{{ estimate_public_url }}" target="_blank">Ver publico</a>
-        {% endif %}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <a class="btn" href="{% url 'estimate_edit' order.pk %}">Editar</a>
+          {% if estimate_has_items and can_send_estimate %}
+            <form method="post" action="{% url 'estimate_send' order.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost">Enviar al cliente</button>
+            </form>
+          {% endif %}
+          {% if estimate_public_url %}
+            <a class="btn btn-ghost" href="{{ estimate_public_url }}" target="_blank">Ver público</a>
+          {% endif %}
+        </div>
       </div>
     </div>
-  </div>
-  <section>
-    <div class="card">
+
+    <div class="card" style="margin-bottom:18px;">
       <h2>Pagos</h2>
-
       {% if can_charge %}
-        <form method="post" action="{% url 'add_payment' order.pk %}" style="margin-bottom:10px">
+        <form method="post" action="{% url 'add_payment' order.pk %}" class="inline">
           {% csrf_token %}
-          <label>Monto</label>
-          <input type="number" name="amount" step="0.01" min="0.01" required>
-          <label>Metodo</label>
-          <input type="text" name="method" maxlength="30" placeholder="Efectivo / Transferencia" required>
-          <label>Referencia</label>
-          <input type="text" name="reference" maxlength="80" placeholder="Folio, ultimos 4, etc.">
-          <button type="submit">Registrar</button>
+          <input type="number" name="amount" step="0.01" min="0.01" placeholder="Monto" required>
+          <input type="text" name="method" maxlength="30" placeholder="Método" required>
+          <input type="text" name="reference" maxlength="80" placeholder="Referencia">
+          <button type="submit">Registrar pago</button>
         </form>
       {% endif %}
+      <div style="margin-top:12px;overflow-x:auto;">
+        <table>
+          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th></tr></thead>
+          <tbody>
+            {% for p in payments %}
+              <tr>
+                <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
+                <td>${{ p.amount|floatformat:2 }}</td>
+                <td>{{ p.method|default:"—" }}</td>
+                <td>{{ p.reference|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-      <table>
-        <thead><tr><th>Fecha</th><th>Monto</th><th>Metodo</th><th>Referencia</th></tr></thead>
-        <tbody>
-          {% for p in payments %}
-            <tr>
-              <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
-              <td>${{ p.amount|floatformat:2 }}</td>
-              <td>{{ p.method|default:"&mdash;" }}</td>
-              <td>{{ p.reference|default:"&mdash;" }}</td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="4" class="muted">Sin pagos registrados.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-  <div class="row" style="margin-top:12px">
-    <div class="card">
-      <h2>Notas internas</h2>
-      <pre style="white-space:pre-wrap">{{ order.notes|default:"(sin notas)" }}</pre>
-      <form method="post" action="{% url 'add_note' order.pk %}" style="margin-top:8px">
-        {% csrf_token %}
-        <textarea name="note" rows="3" placeholder="Agregar nota..." required style="width:100%"></textarea>
-        <div style="margin-top:6px">
+    <div class="grid">
+      <div class="card">
+        <h2>Notas internas</h2>
+        <pre style="white-space:pre-wrap;font-family:inherit;background:#f8fbff;border:1px solid #dbeafe;border-radius:10px;padding:12px;">{{ order.notes|default:"(sin notas)" }}</pre>
+        <form method="post" action="{% url 'add_note' order.pk %}" class="inline" style="margin-top:10px;">
+          {% csrf_token %}
+          <textarea name="note" rows="3" placeholder="Agregar nota..." required></textarea>
           <button type="submit">Guardar nota</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Cambiar estado</h2>
+        {% if allowed_next %}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            {% for code,label in status_choices %}
+              {% if code in allowed_next %}
+                {% if code != 'DONE' or is_superuser %}
+                  {% if code == 'AUTH' %}
+                    <form method="post" action="{% url 'change_status_auth' order.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{% url 'change_status' order.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="target" value="{{ code }}">
+                      <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                    </form>
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted" style="margin-top:8px;">No hay transiciones disponibles.</p>
+        {% endif %}
+      </div>
+      {% if can_assign %}
+        <div class="card">
+          <h2>Asignar técnico</h2>
+          <form method="post" action="{% url 'assign_tech' order.pk %}" class="inline" style="margin-top:8px;">
+            {% csrf_token %}
+            <select name="user_id" required style="padding:8px;border:1px solid #cbd5f5;border-radius:8px;">
+              <option value="">— Selecciona técnico —</option>
+              {% for u in staff_users %}
+                <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">Asignar</button>
+          </form>
         </div>
-      </form>
-    </div>
-    <div class="card">
-      <h2>Cambiar estado</h2>
-      {% if allowed_next %}
-        {% for code,label in status_choices %}
-          {% if code in allowed_next %}
-            {% if code != 'DONE' or is_superuser %}
-              <form method="post" action="{% url 'change_status' order.pk %}" class="inline" style="margin-right:6px">
-                {% csrf_token %}
-                <input type="hidden" name="target" value="{{ code }}">
-                <button type="submit">{{ label }}</button>
-              </form>
-            {% endif %}
-          {% endif %}
-        {% endfor %}
-      {% else %}
-        <div class="muted">No hay transiciones disponibles.</div>
       {% endif %}
     </div>
-    {% if can_assign %}
-    <div class="card">
-      <h2>Asignar tecnico</h2>
-      <form method="post" action="{% url 'assign_tech' order.pk %}">
-        {% csrf_token %}
-        <select name="user_id" required>
-          <option value="">-- Selecciona tecnico --</option>
-          {% for u in staff_users %}
-            <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
-          {% endfor %}
-        </select>
-        <button type="submit">Asignar</button>
-      </form>
+
+    <div class="grid">
+      <div class="card" style="overflow-x:auto;">
+        <h2>Refacciones usadas</h2>
+        <form method="post" action="{% url 'add_part' order.pk %}" class="inline">
+          {% csrf_token %}
+          <input name="sku" placeholder="SKU" required>
+          <input name="qty" type="number" min="1" value="1" required style="width:80px;">
+          <input name="reason" placeholder="Motivo (opcional)">
+          <button type="submit" class="btn btn-ghost">Registrar</button>
+        </form>
+        <table style="margin-top:12px;">
+          <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
+          <tbody>
+            {% for m in parts %}
+              <tr>
+                <td class="muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ m.item.sku }}</td>
+                <td>{{ m.item.name }}</td>
+                <td>{{ m.delta }}</td>
+                <td>{{ m.reason|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" style="text-align:center;padding:18px;">Sin consumos registrados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <h2>Historial</h2>
+        <table>
+          <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
+          <tbody>
+            {% for h in history %}
+              <tr>
+                <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ h.get_status_display }}</td>
+                <td>{{ h.author|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="3" style="text-align:center;padding:18px;">Sin historial.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-    {% endif %}
-  </div>
-  <div class="row" style="margin-top:12px">
-    <div class="card">
-      <h2>Refacciones usadas</h2>
-      <form method="post" action="{% url 'add_part' order.pk %}" style="margin-bottom:8px">
-        {% csrf_token %}
-        <input name="sku" placeholder="SKU" required>
-        <input name="qty" type="number" min="1" value="1" style="width:80px" required>
-        <input name="reason" placeholder="Motivo (opcional)">
-        <button type="submit">Usar</button>
-      </form>
-      <table>
-        <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
-        <tbody>
-          {% for m in parts %}
-            <tr>
-              <td class="muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ m.item.sku }}</td>
-              <td>{{ m.item.name }}</td>
-              <td>{{ m.delta }}</td>
-              <td>{{ m.reason }}</td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="5" class="muted">(sin consumos)</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="card">
-      <h2>Historial</h2>
-      <table>
-        <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
-        <tbody>
-          {% for h in history %}
-            <tr>
-              <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ h.get_status_display }}</td>
-              <td>{{ h.author|default:"-" }}</td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="3" class="muted">(sin historial)</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div style="margin-top:16px">
-    <a class="btn secondary" href="{% url 'list_orders' %}">Volver al listado</a>
-  </div>
+  </main>
 </body>
 </html>

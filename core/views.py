@@ -1073,15 +1073,59 @@ def add_part(request, pk):
     messages.success(request, f"Se uso {qty} x {item.name} (SKU {item.sku}) en {order.folio}.")
     return redirect("list_orders")
 
+
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
-def reception_new_order(request):
-    if not (request.user.is_superuser or user_in_group(request.user, "Recepcion")):
-        messages.error(request, "No tienes permiso para crear ordenes de servicio.")
-        return redirect("list_orders")
-
+def customer_devices(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
     if request.method == "POST":
-        form = ReceptionForm(request.POST)
+        brand = (request.POST.get("brand") or "").strip()
+        model_value = (request.POST.get("model") or "").strip()
+        serial_value = (request.POST.get("serial") or "").strip()
+        if not brand or not model_value:
+            messages.error(request, "Marca y modelo son obligatorios.")
+        else:
+            Device.objects.create(customer=customer, brand=brand, model=model_value, serial=serial_value)
+            messages.success(request, "Dispositivo agregado.")
+            return redirect("customer_devices", pk=customer.pk)
+    devices = Device.objects.filter(customer=customer).order_by("-id")
+    return render(
+        request,
+        "clientes/customer_devices.html",
+        {
+            "customer": customer,
+            "devices": devices,
+        },
+    )
+
+
+@login_required(login_url="/admin/login/")
+def reception_home(request):
+    return render(request, "reception/home.html")
+
+
+@login_required(login_url="/admin/login/")
+def reception_new_order(request):
+    prefill = {
+        "name": "",
+        "phone": "",
+        "email": "",
+        "brand": "",
+        "model": "",
+        "serial": "",
+        "notes": "",
+    }
+    if request.method == "POST":
+        data = request.POST.copy()
+        if "name" in data and "customer_name" not in data:
+            data["customer_name"] = data.get("name", "")
+            data["customer_phone"] = data.get("phone", "")
+            data["customer_email"] = data.get("email", "")
+            data["brand"] = data.get("brand", "")
+            data["model"] = data.get("model", "")
+            data["serial"] = data.get("serial", "")
+            data["notes"] = data.get("notes", "")
+        form = ReceptionForm(data)
         if form.is_valid():
             name = form.cleaned_data["customer_name"].strip()
             phone = (form.cleaned_data.get("customer_phone") or "").strip()
@@ -1089,7 +1133,7 @@ def reception_new_order(request):
             brand = (form.cleaned_data.get("brand") or "").strip()
             model = (form.cleaned_data.get("model") or "").strip()
             serial = (form.cleaned_data.get("serial") or "").strip()
-            notes = form.cleaned_data.get("notes") or ""
+            notes = (form.cleaned_data.get("notes") or "").strip()
 
             customer = None
             if email:
@@ -1098,7 +1142,9 @@ def reception_new_order(request):
                 customer = Customer.objects.filter(phone=phone).first()
             if customer is None:
                 customer = Customer.objects.create(
-                    name=name, phone=phone or "", email=email or ""
+                    name=name,
+                    phone=phone or "",
+                    email=email or "",
                 )
             else:
                 updated = False
@@ -1126,14 +1172,16 @@ def reception_new_order(request):
             if not device.model and model:
                 device.model = model
                 changed = True
-            if notes and (device.notes or "") == "":
+            if notes and not device.notes:
                 device.notes = notes
                 changed = True
             if changed:
                 device.save()
 
             order = ServiceOrder.objects.create(
-                device=device, notes=notes, assigned_to=request.user
+                device=device,
+                notes=notes,
+                assigned_to=request.user if request.user.is_authenticated else None,
             )
             StatusHistory.objects.create(order=order, status=order.status, author=request.user)
 
@@ -1148,25 +1196,61 @@ def reception_new_order(request):
                         fail_silently=False,
                     )
                     Notification.objects.create(
-                        order=order, kind="email", channel="create", ok=True,
-                        payload={"to": email}
+                        order=order,
+                        kind="email",
+                        channel="create",
+                        ok=True,
+                        payload={"to": email},
                     )
                 except Exception as exc:
                     Notification.objects.create(
-                        order=order, kind="email", channel="create", ok=False,
-                        payload={"to": email, "error": str(exc)}
+                        order=order,
+                        kind="email",
+                        channel="create",
+                        ok=False,
+                        payload={"to": email, "error": str(exc)},
                     )
 
-            return redirect("public_status", token=order.token)
-    else:
-        form = ReceptionForm()
+            messages.success(request, f"Orden creada (Folio {getattr(order, 'folio', order.pk)}).")
+            return redirect("order_detail", pk=order.pk)
 
-    return render(request, "reception_new_order.html", {"form": form})
+        prefill = {
+            "name": data.get("name") or data.get("customer_name", ""),
+            "phone": data.get("phone") or data.get("customer_phone", ""),
+            "email": data.get("email") or data.get("customer_email", ""),
+            "brand": data.get("brand", ""),
+            "model": data.get("model", ""),
+            "serial": data.get("serial", ""),
+            "notes": data.get("notes") or "",
+        }
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+
+    context = {"prefill": prefill}
+    return render(request, "reception/new_order.html", context)
 @login_required(login_url="/admin/login/")
 @user_passes_test(staff_required)
 def estimate_edit(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     estimate, _ = Estimate.objects.get_or_create(order=order)
+
+    if request.method == "POST" and request.POST.get("toggle_tax") == "1":
+        estimate.apply_tax = not estimate.apply_tax
+        subtotal = (estimate.subtotal or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        if estimate.apply_tax:
+            tax = (subtotal * IVA_RATE).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        else:
+            tax = Decimal("0.00")
+        total = (subtotal + tax).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        estimate.tax = tax
+        estimate.total = total
+        estimate.save(update_fields=["apply_tax", "tax", "total", "updated_at"])
+        if estimate.apply_tax:
+            messages.info(request, "IVA activado para la cotizacion.")
+        else:
+            messages.info(request, "IVA desactivado para la cotizacion.")
+        return redirect("estimate_edit", pk=order.pk)
 
     if request.method == "POST":
         descriptions = request.POST.getlist("description")
@@ -1276,7 +1360,10 @@ def estimate_edit(request, pk):
                 )
                 subtotal += row["unit_price"] * row["qty"]
             subtotal = subtotal.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-            tax = (subtotal * IVA_RATE).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            if estimate.apply_tax:
+                tax = (subtotal * IVA_RATE).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            else:
+                tax = Decimal("0.00")
             total = (subtotal + tax).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
             estimate.note = note
             estimate.subtotal = subtotal
@@ -1678,7 +1765,7 @@ def export_inventory_csv(request):
     resp["Content-Disposition"] = 'attachment; filename="inventario.csv"'
     w = csv.writer(resp)
 
-    w.writerow(["SKU", "Nombre", "Stock", "Mínimo", "Costo", "Precio", "Actualizado"])
+    w.writerow(["SKU", "Nombre", "Stock", "Mínimo"])
 
     qs = InventoryItem.objects.all().order_by("sku")
     for it in qs:
@@ -1686,17 +1773,8 @@ def export_inventory_csv(request):
         name  = getattr(it, "name", "")
         qty   = getattr(it, "qty", "")
         min_q = getattr(it, "min_qty", "")
-        cost  = getattr(it, "unit_cost", "")
-        price = getattr(it, "unit_price", "")
-        upd   = ""
-        upd_dt = getattr(it, "updated_at", None)
-        if upd_dt:
-            try:
-                from django.utils import timezone
-                upd = timezone.localtime(upd_dt).strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                upd = str(upd_dt)
 
-        w.writerow([sku, name, qty, min_q, cost, price, upd])
+        w.writerow([sku, name, qty, min_q])
 
     return resp
+

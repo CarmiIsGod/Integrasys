@@ -7,10 +7,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
+    path("recepcion/", core_views.reception_home, name="reception_home"),
+    path("reportes/inventario.csv", core_views.export_inventory_csv, name="export_inventory_csv"),  # INTEGRASYS
     path("reportes/ordenes.csv", core_views.export_orders_csv, name="export_orders_csv"),  # INTEGRASYS
     path("recepcion/orden/<int:pk>/adjuntos/<int:att_id>/eliminar/", core_views.delete_attachment, name="delete_attachment"),  # INTEGRASYS
     # Redirige la raíz al panel de órdenes (puedes cambiar a "/admin/" si prefieres)
-    path("", RedirectView.as_view(url="/recepcion/ordenes/", permanent=False)),
+    path("", RedirectView.as_view(url="/recepcion/", permanent=False)),
     # (Opcional) que /accounts/login/ mande al login del admin
     path("accounts/login/", RedirectView.as_view(url="/admin/login/", permanent=False)),
 
@@ -28,13 +30,18 @@ urlpatterns = [
     path("recepcion/ordenes/<int:pk>/pago/", views.add_payment, name="add_payment"),
     path("recepcion/ordenes/p/<int:payment_id>/recibo.pdf", views.payment_receipt_pdf, name="payment_receipt_pdf"),
     path("recepcion/ordenes/<int:pk>/status/", views.change_status, name="change_status"),
+    path("recepcion/ordenes/<int:pk>/status/auth/", views.change_status_auth, name="change_status_auth"),
     path("recepcion/ordenes/<int:pk>/part/", views.add_part, name="add_part"),
     path("recepcion/ordenes/<int:pk>/nota/", views.add_note, name="add_note"),
     path("recepcion/ordenes/<int:pk>/assign/", views.assign_tech, name="assign_tech"),
+    path("clientes/<int:pk>/dispositivos/", core_views.customer_devices, name="customer_devices"),
 
     # Inventario
     path("inventario/", views.inventory_list, name="inventory_list"),
     path("inventario/entrada/", views.receive_stock, name="receive_stock"),
+    path("inventario/nuevo/", views.inventory_create, name="inventory_create"),
+    path("inventario/<int:pk>/editar/", views.inventory_update, name="inventory_update"),
+    path("inventario/<int:pk>/eliminar/", views.inventory_delete, name="inventory_delete"),
 
     # Cotizaciones
     path("recepcion/ordenes/<int:pk>/cotizacion/", views.estimate_edit, name="estimate_edit"),

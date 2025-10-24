@@ -231,6 +231,7 @@ class Estimate(models.Model):
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     tax = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    apply_tax = models.BooleanField(default=True)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     def __str__(self):
@@ -294,24 +295,34 @@ if InventoryMovementModel is not None:
             qty = 0
             min_qty = 0
         if qty > min_qty:
-            return  # no está bajo
+            return  # stock is above threshold
 
         sku = getattr(item, 'sku', '')
         name = getattr(item, 'name', '')
         location = getattr(item, 'location', None) or '-'
-        subject = f"Stock bajo: {sku} - {name} (qty {qty} ≤ min {min_qty})"
-        body = (
-            f"Inventario bajo para {name} ({sku}).\n"
-            f"Ubicación: {location}\n"
-            f"Cantidad actual: {qty}\n"
-            f"Mínimo definido: {min_qty}\n"
-        )
-        # Notification interna
-        try:
-            if NotificationModel is not None:
-                NotificationModel.objects.create(kind='stock', target=sku, subject=subject, body=body, ok=True)
-        except Exception:
-            pass
+        subject = f"Stock bajo: {sku} - {name} (qty {qty} <= min {min_qty})"
+        body_lines = [
+            f"Inventario bajo para {name} ({sku}).",
+            f"Ubicacion: {location}",
+            f"Cantidad actual: {qty}",
+            f"Minimo definido: {min_qty}",
+        ]
+        body = "\n".join(body_lines)
+        payload = {
+            "sku": sku,
+            "name": name,
+            "qty": qty,
+            "min_qty": min_qty,
+            "location": location,
+        }
+        if NotificationModel is not None:
+            NotificationModel.objects.create(
+                order=None,
+                kind='stock',
+                channel='low_stock_signal',
+                ok=True,
+                payload=payload,
+            )
         # Destinatarios: ADMINS/MANAGERS o staff con email
         to_emails = []
         try:
@@ -324,12 +335,37 @@ if InventoryMovementModel is not None:
                     to_emails = [e for _, e in managers if e]
             if not to_emails:
                 User = get_user_model()
-                to_emails = list(User.objects.filter(is_staff=True).exclude(email='').values_list('email', flat=True)[:5])
+                to_emails = list(
+                    User.objects.filter(is_staff=True)
+                    .exclude(email='')
+                    .values_list('email', flat=True)[:5]
+                )
         except Exception:
             to_emails = []
+        email_ok = False
+        email_error = None
         if to_emails:
             try:
-                send_mail(subject, body, getattr(settings, 'DEFAULT_FROM_EMAIL', None), to_emails, fail_silently=True)
-            except Exception:
-                pass
-
+                send_count = send_mail(
+                    subject,
+                    body,
+                    getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+                    to_emails,
+                    fail_silently=False,
+                )
+                email_ok = send_count > 0
+            except Exception as exc:
+                email_error = str(exc)
+        else:
+            email_error = "no_recipients"
+        if NotificationModel is not None:
+            email_payload = {**payload, "recipients": list(to_emails)}
+            if email_error:
+                email_payload["error"] = email_error
+            NotificationModel.objects.create(
+                order=None,
+                kind='email',
+                channel='low_stock',
+                ok=email_ok,
+                payload=email_payload,
+            )

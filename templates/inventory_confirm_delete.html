@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Eliminar {{ item.sku }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:520px}
+    .warn{background:#fee2e2;color:#991b1b;padding:12px;border-radius:8px;margin:16px 0}
+    .info{margin:12px 0}
+    form{margin-top:16px}
+    button,.btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;border:0;cursor:pointer}
+    .btn{background:#6b7280;color:#fff}
+    .primary{background:#2563eb;color:#fff}
+    .danger{background:#b91c1c;color:#fff}
+  </style>
+</head>
+<body>
+  <h1>Eliminar SKU {{ item.sku }}</h1>
+  <div class="info">
+    <p>Vas a eliminar <strong>{{ item.name }}</strong> del inventario.</p>
+    <p>Ubicacion: {{ item.location|default:"&mdash;" }} | Stock actual: {{ item.qty }} | Minimo: {{ item.min_qty }}</p>
+  </div>
+
+  {% if has_movements %}
+    <div class="warn">
+      Este item tiene movimientos registrados y no se puede eliminar.
+    </div>
+    <a class="btn" href="{% url 'inventory_update' item.pk %}">Volver</a>
+  {% else %}
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="danger">Eliminar</button>
+      <a class="btn" href="{% url 'inventory_list' %}">Cancelar</a>
+    </form>
+  {% endif %}
+</body>
+</html>

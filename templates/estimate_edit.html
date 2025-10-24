@@ -14,8 +14,11 @@
     input[type="number"]{width:100px}
     button.primary{background:#2563eb;color:#fff;border:0;cursor:pointer}
     button.link{background:transparent;border:0;color:#ef4444;cursor:pointer}
+    .btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;background:#6b7280;color:#fff;border:0;cursor:pointer}
+    .btn.secondary{background:#6b7280}
+    .btn.primary{background:#2563eb}
     .actions{display:flex;gap:12px;align-items:center;margin-top:12px}
-    a.btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;background:#6b7280;color:#fff}
+    a.btn{text-decoration:none}
     .summary{margin-top:20px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
     form.inline{display:inline}
     #add-row{margin-top:8px}
@@ -72,6 +75,14 @@
     <div><b>Subtotal guardado:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
     <div><b>IVA guardado:</b> ${{ estimate.tax|floatformat:2 }}</div>
     <div><b>Total guardado:</b> ${{ estimate.total|floatformat:2 }}</div>
+    <div class="muted">IVA aplicado: {% if estimate.apply_tax %}Sí{% else %}No{% endif %}</div>
+    <form method="post" class="inline" style="margin-top:12px">
+      {% csrf_token %}
+      <input type="hidden" name="toggle_tax" value="1">
+      <button type="submit" class="btn {% if estimate.apply_tax %}secondary{% else %}primary{% endif %}">
+        {% if estimate.apply_tax %}Quitar IVA{% else %}Agregar IVA{% endif %}
+      </button>
+    </form>
   </div>
 
   <div class="actions" style="margin-top:12px">

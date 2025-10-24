@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Dispositivos de {{ customer.name }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
+    h1{margin-bottom:12px}
+    form{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}
+    input,button{padding:8px;border:1px solid #d1d5db;border-radius:6px}
+    button{background:#2563eb;color:#fff;border:0;cursor:pointer}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left}
+    th{background:#f9fafb}
+    .messages{margin-bottom:12px}
+    .messages li{list-style:none;padding:6px 10px;border-radius:6px;background:#f3f4f6;margin-bottom:6px}
+    a.btn{display:inline-block;padding:8px 12px;border-radius:6px;background:#6b7280;color:#fff;text-decoration:none;margin-top:12px}
+  </style>
+</head>
+<body>
+  <h1>Dispositivos de {{ customer.name }}</h1>
+
+  {% if messages %}
+    <ul class="messages">
+      {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <input name="brand" placeholder="Marca" required>
+    <input name="model" placeholder="Modelo" required>
+    <input name="serial" placeholder="Serie (opcional)">
+    <button type="submit">Agregar</button>
+  </form>
+
+  <table>
+    <thead><tr><th>Marca</th><th>Modelo</th><th>Serie</th></tr></thead>
+    <tbody>
+      {% for d in devices %}
+        <tr>
+          <td>{{ d.brand|default:"—" }}</td>
+          <td>{{ d.model|default:"—" }}</td>
+          <td>{{ d.serial|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3">Sin dispositivos registrados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a class="btn" href="{% url 'list_orders' %}">Volver</a>
+</body>
+</html>
