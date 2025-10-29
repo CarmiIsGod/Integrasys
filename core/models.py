@@ -255,6 +255,8 @@ class Notification(models.Model):
     channel = models.CharField(max_length=20, db_index=True)  
     ok = models.BooleanField(default=False)
     payload = models.JSONField(default=dict, blank=True)
+    title = models.CharField(max_length=140, blank=True)
+    seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
 

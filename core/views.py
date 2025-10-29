@@ -1,7 +1,7 @@
 ﻿from django.http import HttpResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.contrib import messages
 from django.db.models import Q, Count
@@ -40,7 +40,15 @@ from .models import (
     Payment,
     Attachment,
 )
-
+from .permissions import (
+    ROLE_RECEPCION,
+    ROLE_GERENCIA,
+    ROLE_TECNICO,
+    is_gerencia,
+    is_recepcion,
+    is_tecnico,
+    roles_required,
+)
 
 
 ALLOWED = {
@@ -157,17 +165,8 @@ def receipt_pdf(request, token):
         return HttpResponse(html, content_type="text/html", status=500)
 
 
-def staff_required(user):
-    return user.is_staff
-
-def user_in_group(user, group_name):
-    if not getattr(user, 'is_authenticated', False):
-        return False
-    return user.groups.filter(name=group_name).exists()
-
-
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_GERENCIA)
 def dashboard(request):
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
@@ -364,7 +363,7 @@ def dashboard(request):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def inventory_list(request):
     q = (request.GET.get("q", "") or "").strip()
     low = request.GET.get("low") == "1"
@@ -374,11 +373,17 @@ def inventory_list(request):
         items = items.filter(search)
     if low:
         items = items.filter(qty__lt=models.F("min_qty"))
-    return render(request, "inventory_list.html", {"items": items, "q": q, "low": low})
+    context = {
+        "items": items,
+        "q": q,
+        "low": low,
+        "can_export": is_gerencia(request.user),
+    }
+    return render(request, "inventory_list.html", context)
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def receive_stock(request):
     sku = (request.POST.get("sku") or "").strip()
@@ -405,7 +410,7 @@ def receive_stock(request):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def inventory_create(request):
     if request.method == "POST":
         form = InventoryItemForm(request.POST)
@@ -425,7 +430,7 @@ def inventory_create(request):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def inventory_update(request, pk):
     item = get_object_or_404(InventoryItem, pk=pk)
     if request.method == "POST":
@@ -446,7 +451,7 @@ def inventory_update(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_GERENCIA)
 def inventory_delete(request, pk):
     item = get_object_or_404(InventoryItem, pk=pk)
     has_movements = InventoryMovement.objects.filter(item=item).exists()
@@ -469,7 +474,7 @@ def inventory_delete(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def list_orders(request):
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
@@ -479,12 +484,13 @@ def list_orders(request):
     assignee = (request.GET.get("assignee", "") or "").strip()
 
     is_superuser = request.user.is_superuser
-    is_technician = user_in_group(request.user, "Tecnico") and not is_superuser
-    is_reception = user_in_group(request.user, "Recepcion")
+    is_technician = is_tecnico(request.user)
+    is_reception = is_recepcion(request.user)
 
-    can_create = is_superuser or is_reception
-    can_assign = is_superuser or is_reception
-    can_send_estimate = is_superuser or is_reception
+    can_create = is_reception
+    can_assign = is_reception
+    can_send_estimate = is_reception
+    can_export = is_gerencia(request.user)
 
     qs = ServiceOrder.objects.select_related("device","device__customer").order_by("-checkin_at")
     if is_technician:
@@ -573,13 +579,14 @@ def list_orders(request):
         "can_create": can_create,
         "can_assign": can_assign,
         "can_send_estimate": can_send_estimate,
+        "can_export": can_export,
         "is_technician": is_technician,
         "is_superuser": is_superuser,
     }
     return render(request, "reception_orders.html", context)
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def order_detail(request, pk):
     order = get_object_or_404(
         ServiceOrder.objects.select_related("device","device__customer"),
@@ -590,8 +597,8 @@ def order_detail(request, pk):
     allowed_next = ALLOWED.get(order.status, [])
 
     is_superuser = request.user.is_superuser
-    is_technician = user_in_group(request.user, "Tecnico") and not is_superuser
-    is_reception = user_in_group(request.user, "Recepcion")
+    is_technician = is_tecnico(request.user)
+    is_reception = is_recepcion(request.user)
 
     if is_technician:
         allowed_next = [code for code in allowed_next if code in {"REV", "WAI", "READY"}]
@@ -616,15 +623,15 @@ def order_detail(request, pk):
     if estimate and estimate_has_items:
         estimate_public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
 
-    can_create = is_superuser or is_reception
-    can_assign = is_superuser or is_reception
-    can_send_estimate = is_superuser or is_reception
+    can_create = is_reception
+    can_assign = is_reception
+    can_send_estimate = is_reception
 
     payments = order.payments.select_related("author")
     approved_total = order.approved_total
     paid_total = order.paid_total
     balance = order.balance
-    can_charge = (is_superuser or is_reception) and balance > Decimal("0.00")
+    can_charge = is_reception and balance > Decimal("0.00")
 
     return render(
         request,
@@ -656,7 +663,7 @@ def order_detail(request, pk):
     )
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def add_payment(request, pk):
     order = get_object_or_404(
@@ -763,7 +770,7 @@ def add_payment(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def change_status_auth(request, pk):
     order = get_object_or_404(
@@ -776,7 +783,7 @@ def change_status_auth(request, pk):
         messages.error(request, "Transicion de estado invalida.")
         return redirect("order_detail", pk=order.pk)
 
-    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+    if is_tecnico(request.user):
         messages.error(request, "No tienes permiso para solicitar autorizacion.")
         return redirect("order_detail", pk=order.pk)
 
@@ -857,7 +864,7 @@ def change_status_auth(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def change_status(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -872,7 +879,7 @@ def change_status(request, pk):
         messages.error(request, "Usa el flujo de autorizacion dedicado.")
         return redirect("order_detail", pk=order.pk)
 
-    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+    if is_tecnico(request.user):
         if order.assigned_to_id != request.user.id:
             messages.error(request, "Solo puedes actualizar tus ordenes asignadas.")
             return redirect("list_orders")
@@ -919,7 +926,7 @@ def change_status(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def payment_receipt_pdf(request, payment_id):
     payment = get_object_or_404(
         Payment.objects.select_related("order", "author", "order__device", "order__device__customer"),
@@ -953,14 +960,13 @@ def payment_receipt_pdf(request, payment_id):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def assign_tech(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     uid = (request.POST.get("user_id") or "").strip()
 
-    is_superuser = request.user.is_superuser
-    is_technician = user_in_group(request.user, "Tecnico") and not is_superuser
+    is_technician = is_tecnico(request.user)
     if is_technician and order.assigned_to_id != request.user.id:
         messages.error(request, "Solo puedes gestionar ordenes asignadas a ti.")
         return redirect("order_detail", pk=order.pk)
@@ -990,12 +996,12 @@ def assign_tech(request, pk):
     return redirect("order_detail", pk=order.pk)
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def add_note(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
 
-    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+    if is_tecnico(request.user):
         if order.assigned_to_id != request.user.id:
             messages.error(request, "Solo puedes agregar notas a tus ordenes asignadas.")
             return redirect("order_detail", pk=order.pk)
@@ -1012,12 +1018,12 @@ def add_note(request, pk):
     return redirect("order_detail", pk=order.pk)
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def add_part(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
 
-    if user_in_group(request.user, "Tecnico") and not request.user.is_superuser:
+    if is_tecnico(request.user):
         if order.assigned_to_id != request.user.id:
             messages.error(request, "Solo puedes usar partes en tus ordenes asignadas.")
             return redirect("list_orders")
@@ -1075,7 +1081,7 @@ def add_part(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def customer_devices(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     if request.method == "POST":
@@ -1100,11 +1106,17 @@ def customer_devices(request, pk):
 
 
 @login_required(login_url="/admin/login/")
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def reception_home(request):
-    return render(request, "reception/home.html")
+    return render(
+        request,
+        "reception/home.html",
+        {"can_export": is_gerencia(request.user)},
+    )
 
 
 @login_required(login_url="/admin/login/")
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_new_order(request):
     prefill = {
         "name": "",
@@ -1230,7 +1242,7 @@ def reception_new_order(request):
     context = {"prefill": prefill}
     return render(request, "reception/new_order.html", context)
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def estimate_edit(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     estimate, _ = Estimate.objects.get_or_create(order=order)
@@ -1382,7 +1394,7 @@ def estimate_edit(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@user_passes_test(staff_required)
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def estimate_send(request, pk):
     order = get_object_or_404(
@@ -1528,11 +1540,9 @@ def estimate_approve(request, token):
         StatusHistory.objects.create(order=order, status=order.status, author=None)
 
     customer_email = (order.device.customer.email or "").strip()
+    total_value = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    total_display = format(total_value, ".2f")
     if customer_email:
-        total_display = format(
-            (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP),
-            ".2f",
-        )
         body = (
             "Gracias por aprobar la cotizacion.\n"
             f"Total autorizado: ${total_display}.\n"
@@ -1544,6 +1554,21 @@ def estimate_approve(request, token):
             recipient_list=[customer_email],
             fail_silently=True,
         )
+
+    Notification.objects.create(
+        order=order,
+        kind="estimate",
+        channel="approved",
+        ok=True,
+        title=f"Cotizacion {order.folio} aprobada",
+        payload={
+            "order_id": order.pk,
+            "folio": order.folio,
+            "customer": order.device.customer.name,
+            "total": total_display,
+            "approved_at": timezone.localtime(now).isoformat(),
+        },
+    )
 
     return redirect("estimate_public", token=token)
 
@@ -1586,7 +1611,49 @@ def estimate_decline(request, token):
             fail_silently=True,
         )
 
+    total_value = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    total_display = format(total_value, ".2f")
+    Notification.objects.create(
+        order=order,
+        kind="estimate",
+        channel="declined",
+        ok=True,
+        title=f"Cotizacion {order.folio} rechazada",
+        payload={
+            "order_id": order.pk,
+            "folio": order.folio,
+            "customer": order.device.customer.name,
+            "total": total_display,
+            "declined_at": timezone.localtime(now).isoformat(),
+        },
+    )
+
     return redirect("estimate_public", token=token)
+
+
+@login_required(login_url="/admin/login/")
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+def notifications_list(request):
+    notifications = Notification.objects.order_by("-created_at")[:100]
+    unread_count = Notification.objects.filter(seen_at__isnull=True).count()
+    return render(
+        request,
+        "notifications/list.html",
+        {"notifications": notifications, "unread_count": unread_count},
+    )
+
+
+@login_required(login_url="/admin/login/")
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@require_POST
+def notifications_mark_all_read(request):
+    Notification.objects.filter(seen_at__isnull=True).update(seen_at=timezone.now())
+    messages.success(request, "Notificaciones marcadas como le&iacute;das.")
+    next_url = request.POST.get("next", "")
+    if next_url:
+        return redirect(next_url)
+    return redirect("notifications_list")
+
 # === INTEGRASYS PATCH: ATTACHMENTS VIEW ===
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 ATTACHMENT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
@@ -1637,8 +1704,13 @@ def _format_bytes(total):
 
 
 @login_required(login_url="/admin/login/")
+@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def order_attachments(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
+    existing_filenames = set(
+        Path(att.file.name).name.lower()
+        for att in Attachment.objects.filter(service_order=order)
+    )
     caption_value = (request.POST.get("caption") or "").strip()
     if request.method == "POST":
         files = request.FILES.getlist("file")
@@ -1657,6 +1729,11 @@ def order_attachments(request, pk):
             if not _attachment_allowed(uploaded):
                 rejected.append(f"{file_name}: tipo no permitido.")
                 continue
+            name_key = Path(file_name).name.lower()
+            if name_key in existing_filenames:
+                rejected.append(f"{file_name}: ya existe en la orden.")
+                continue
+            existing_filenames.add(name_key)
             valid_files.append(uploaded)
         if not valid_files:
             for msg_text in rejected:
@@ -1699,6 +1776,7 @@ def order_attachments(request, pk):
 
 
 @login_required(login_url="/admin/login/")
+@roles_required(ROLE_GERENCIA)
 @require_POST
 def delete_attachment(request, pk, att_id):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -1711,8 +1789,8 @@ def delete_attachment(request, pk, att_id):
     return redirect("order_attachments", pk=order.pk)
 
 # === INTEGRASYS: ExportaciÃ³n CSV de Ã³rdenes ===
-@login_required
-@user_passes_test(lambda u: u.is_staff or u.is_superuser)
+@login_required(login_url="/admin/login/")
+@roles_required(ROLE_GERENCIA)
 def export_orders_csv(request):
     fmt = "%Y-%m-%d"
     get = request.GET.get
@@ -1722,14 +1800,24 @@ def export_orders_csv(request):
     assignee = get("assignee") or ""
     q = get("q") or ""
 
-    qs = ServiceOrder.objects.select_related("device__customer")
-    from datetime import datetime as _dt
+    qs = ServiceOrder.objects.select_related("device__customer", "assigned_to").order_by("-checkin_at")
+    tz = timezone.get_current_timezone()
     if dfrom:
-        try: qs = qs.filter(checkin_at__date__gte=_dt.strptime(dfrom, fmt).date())
-        except Exception: pass
+        try:
+            start = datetime.strptime(dfrom, fmt)
+            if settings.USE_TZ and timezone.is_naive(start):
+                start = tz.localize(start)
+            qs = qs.filter(checkin_at__gte=start)
+        except ValueError:
+            pass
     if dto:
-        try: qs = qs.filter(checkin_at__date__lte=_dt.strptime(dto, fmt).date())
-        except Exception: pass
+        try:
+            end = datetime.strptime(dto, fmt)
+            if settings.USE_TZ and timezone.is_naive(end):
+                end = tz.localize(end)
+            qs = qs.filter(checkin_at__lt=end + timedelta(days=1))
+        except ValueError:
+            pass
     if status: qs = qs.filter(status=status)
     if assignee: qs = qs.filter(assigned_to_id=assignee)
     if q:
@@ -1744,19 +1832,103 @@ def export_orders_csv(request):
     resp = HttpResponse(content_type="text/csv; charset=utf-8")
     resp["Content-Disposition"] = "attachment; filename=ordenes.csv"
     w = csv.writer(resp)
-    w.writerow(["ID","Folio","Cliente","Equipo","Serie","Estado","Ingreso"])
-    for o in qs.order_by("-checkin_at"):
-        cliente = getattr(o.device.customer, "name", "")
-        equipo  = f"{getattr(o.device, 'brand', '')} {getattr(o.device, 'model', '')}".strip()
-        serie   = getattr(o.device, "serial", "")
-        estado  = o.get_status_display() if hasattr(o, "get_status_display") else getattr(o, "status", "")
-        ingreso = o.checkin_at.strftime("%Y-%m-%d %H:%M") if getattr(o, "checkin_at", None) else ""
-        w.writerow([o.id, o.folio, cliente, equipo, serie, estado, ingreso])
+    w.writerow(["ID","Folio","Estado","Cliente","Telefono","Correo","Tecnico","Ingreso","Entrega","TotalAprobado","Pagado","Saldo","Cotizacion","Notas","URLPublico"])
+    for o in qs:
+        cliente_obj = o.device.customer if o.device_id else None
+        telefono = getattr(cliente_obj, "phone", "")
+        correo = getattr(cliente_obj, "email", "")
+        tecnico = o.assigned_to.get_username() if o.assigned_to_id else ""
+        ingreso = timezone.localtime(o.checkin_at).strftime("%Y-%m-%d %H:%M") if getattr(o, "checkin_at", None) else ""
+        entrega = timezone.localtime(o.checkout_at).strftime("%Y-%m-%d %H:%M") if getattr(o, "checkout_at", None) else ""
+        total_aprobado = o.approved_total.quantize(TWO_PLACES) if hasattr(o.approved_total, "quantize") else Decimal(o.approved_total or 0).quantize(TWO_PLACES)
+        total_pagado = o.paid_total.quantize(TWO_PLACES) if hasattr(o.paid_total, "quantize") else Decimal(o.paid_total or 0).quantize(TWO_PLACES)
+        saldo = o.balance.quantize(TWO_PLACES) if hasattr(o.balance, "quantize") else Decimal(o.balance or 0).quantize(TWO_PLACES)
+        try:
+            estimate = o.estimate
+        except Estimate.DoesNotExist:
+            estimate = None
+        cotizacion = _estimate_status_label(estimate) if estimate else "Sin cotizacion"
+        notas = (o.notes or "").replace("\r", " ").replace("\n", " ").strip()
+        public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
+        cliente = cliente_obj.name if cliente_obj else ""
+        w.writerow([o.id, o.folio, o.get_status_display(), cliente, telefono, correo, tecnico, ingreso, entrega, f"{total_aprobado}", f"{total_pagado}", f"{saldo}", cotizacion, notas, public_url])
+    return resp
+
+
+@login_required(login_url="/admin/login/")
+@roles_required(ROLE_GERENCIA)
+def export_payments_csv(request):
+    fmt = "%Y-%m-%d"
+    get = request.GET.get
+    dfrom = (get("from") or get("desde") or "").strip()
+    dto = (get("to") or get("hasta") or "").strip()
+    status = (get("status") or "").strip()
+    assignee = (get("assignee") or "").strip()
+    query = (get("q") or "").strip()
+
+    payments = (
+        Payment.objects.select_related("order", "order__device__customer", "order__assigned_to", "author")
+        .order_by("-created_at")
+    )
+
+    tz = timezone.get_current_timezone()
+    if dfrom:
+        try:
+            start = datetime.strptime(dfrom, fmt)
+            if settings.USE_TZ and timezone.is_naive(start):
+                start = tz.localize(start)
+            payments = payments.filter(created_at__gte=start)
+        except ValueError:
+            pass
+    if dto:
+        try:
+            end = datetime.strptime(dto, fmt)
+            if settings.USE_TZ and timezone.is_naive(end):
+                end = tz.localize(end)
+            payments = payments.filter(created_at__lt=end + timedelta(days=1))
+        except ValueError:
+            pass
+    if status:
+        payments = payments.filter(order__status=status)
+    if assignee:
+        payments = payments.filter(order__assigned_to_id=assignee)
+    if query:
+        payments = payments.filter(
+            Q(order__folio__icontains=query)
+            | Q(order__device__customer__name__icontains=query)
+            | Q(order__device__brand__icontains=query)
+            | Q(order__device__model__icontains=query)
+            | Q(order__device__serial__icontains=query)
+        )
+
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = "attachment; filename=pagos.csv"
+    w = csv.writer(resp)
+    w.writerow(["PagoID", "OrdenID", "Folio", "Cliente", "Monto", "Metodo", "Referencia", "Autor", "Fecha", "EstadoOrden", "Tecnico"])
+
+    for p in payments:
+        order = p.order
+        customer = order.device.customer if order and order.device_id else None
+        amount = p.amount.quantize(TWO_PLACES) if hasattr(p.amount, "quantize") else Decimal(p.amount or 0).quantize(TWO_PLACES)
+        fecha = timezone.localtime(p.created_at).strftime("%Y-%m-%d %H:%M") if p.created_at else ""
+        w.writerow([
+            p.id,
+            order.id if order else "",
+            order.folio if order else "",
+            customer.name if customer else "",
+            f"{amount}",
+            p.method,
+            p.reference,
+            p.author.get_username() if p.author_id else "",
+            fecha,
+            order.get_status_display() if order else "",
+            order.assigned_to.get_username() if order and order.assigned_to_id else "",
+        ])
     return resp
 
 # === Inventory CSV export (robust) ===
-@login_required
-@user_passes_test(lambda u: u.is_staff or u.is_superuser)
+@login_required(login_url="/admin/login/")
+@roles_required(ROLE_GERENCIA)
 def export_inventory_csv(request):
     # Import local para evitar problemas de orden de carga
     from .models import InventoryItem
@@ -1765,7 +1937,7 @@ def export_inventory_csv(request):
     resp["Content-Disposition"] = 'attachment; filename="inventario.csv"'
     w = csv.writer(resp)
 
-    w.writerow(["SKU", "Nombre", "Stock", "Mínimo"])
+    w.writerow(["SKU", "Nombre", "Stock", "Minimo"])
 
     qs = InventoryItem.objects.all().order_by("sku")
     for it in qs:
@@ -1777,4 +1949,6 @@ def export_inventory_csv(request):
         w.writerow([sku, name, qty, min_q])
 
     return resp
+
+
 

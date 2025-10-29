@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Notificaciones | Integrasys</title>
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    h1{margin:0 0 12px;font-size:28px;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(15,23,42,0.08);border:1px solid #e2e8f0;margin-bottom:16px;}
+    .muted{color:#64748b;font-size:14px;}
+    .notif-list{display:grid;gap:14px;margin-top:18px;}
+    .notif{border:1px solid #e2e8f0;border-radius:12px;padding:14px;background:#fff;box-shadow:0 4px 12px rgba(15,23,42,0.05);}
+    .notif--unread{border-color:#93c5fd;background:#eff6ff;}
+    .notif h2{margin:0;font-size:18px;color:#1d4ed8;}
+    .notif time{display:block;margin-top:6px;font-size:12px;color:#64748b;}
+    .pill{display:inline-block;background:#1d4ed8;color:#fff;font-size:12px;padding:2px 8px;border-radius:999px;margin-right:6px;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;border:none;cursor:pointer;}
+    .btn-ghost{background:#e2e8f0;color:#1e293b;}
+  </style>
+</head>
+<body>
+  {% include "partials/reception_nav.html" %}
+  <main>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+      <div>
+        <h1>Notificaciones</h1>
+        <p class="muted">Resumen de eventos recientes. {{ unread_count }} sin leer.</p>
+      </div>
+      <a class="btn-ghost btn" href="{% url 'reception_home' %}">&larr; Regresar</a>
+    </div>
+
+    <div class="card">
+      <form method="post" action="{% url 'notifications_mark_all_read' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'notifications_list' %}">
+        <button type="submit" class="btn" {% if not unread_count %}disabled style="opacity:.6;cursor:not-allowed;"{% endif %}>
+          Marcar todas como le&iacute;das
+        </button>
+      </form>
+    </div>
+
+    <section class="notif-list">
+      {% for notif in notifications %}
+        <article class="notif {% if not notif.seen_at %}notif--unread{% endif %}">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <h2>{{ notif.title|default:"Actualizacion" }}</h2>
+            <span class="pill">{{ notif.kind|upper }}</span>
+          </div>
+          {% if notif.payload.customer %}
+            <div>Cliente: <strong>{{ notif.payload.customer }}</strong></div>
+          {% endif %}
+          {% if notif.payload.folio %}
+            <div>Orden: <strong>{{ notif.payload.folio }}</strong></div>
+          {% endif %}
+          {% if notif.payload.total %}
+            <div>Total: ${{ notif.payload.total }}</div>
+          {% endif %}
+          {% if notif.payload.error %}
+            <div style="color:#b91c1c;">Error: {{ notif.payload.error }}</div>
+          {% endif %}
+          <time>Creado: {{ notif.created_at|date:"Y-m-d H:i" }}{% if notif.seen_at %} &middot; Le&iacute;do: {{ notif.seen_at|date:"Y-m-d H:i" }}{% endif %}</time>
+        </article>
+      {% empty %}
+        <p class="muted">Sin notificaciones registradas.</p>
+      {% endfor %}
+    </section>
+  </main>
+</body>
+</html>

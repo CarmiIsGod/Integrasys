@@ -10,6 +10,7 @@ urlpatterns = [
     path("recepcion/", core_views.reception_home, name="reception_home"),
     path("reportes/inventario.csv", core_views.export_inventory_csv, name="export_inventory_csv"),  # INTEGRASYS
     path("reportes/ordenes.csv", core_views.export_orders_csv, name="export_orders_csv"),  # INTEGRASYS
+    path("reportes/pagos.csv", core_views.export_payments_csv, name="export_payments_csv"),
     path("recepcion/orden/<int:pk>/adjuntos/<int:att_id>/eliminar/", core_views.delete_attachment, name="delete_attachment"),  # INTEGRASYS
     # Redirige la raíz al panel de órdenes (puedes cambiar a "/admin/" si prefieres)
     path("", RedirectView.as_view(url="/recepcion/", permanent=False)),
@@ -50,6 +51,8 @@ urlpatterns = [
     path("cotizacion/<uuid:token>/aprobar/", views.estimate_approve, name="estimate_approve"),
     path("cotizacion/<uuid:token>/rechazar/", views.estimate_decline, name="estimate_decline"),
     path("recepcion/orden/<int:pk>/adjuntos/", views.order_attachments, name="order_attachments"),  # INTEGRASYS
+    path("notificaciones/", views.notifications_list, name="notifications_list"),
+    path("notificaciones/marcar-todas/", views.notifications_mark_all_read, name="notifications_mark_all_read"),
 ]
 
 
