@@ -17,6 +17,19 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      # 🔧 Dependencias del sistema para pycairo/cairo (PDF/imagenes)
+      - name: Install system libraries (cairo/pango/jpeg/etc)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf2.0-dev \
+            libffi-dev \
+            libjpeg-dev \
+            zlib1g-dev \
+            pkg-config
+
       - name: Create .env for CI
         run: |
           cat > .env << 'EOF'
@@ -32,6 +45,7 @@ jobs:
           python -m pip install -U pip wheel
           pip install -r requirements.txt
 
+      # Primero migramos (evita que `check` truene por tablas faltantes)
       - name: Migrate (SQLite)
         run: python manage.py migrate --noinput
 
