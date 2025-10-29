@@ -66,7 +66,7 @@
     </div>
 
     <div class="actions">
-      <button type="submit" class="primary">Guardar cotizacion</button>
+      <button type="submit" class="primary" data-clear-draft="1">Guardar cotizacion</button>
       <a class="btn" href="{% url 'order_detail' order.pk %}">Volver a la orden</a>
     </div>
   </form>
@@ -75,11 +75,11 @@
     <div><b>Subtotal guardado:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
     <div><b>IVA guardado:</b> ${{ estimate.tax|floatformat:2 }}</div>
     <div><b>Total guardado:</b> ${{ estimate.total|floatformat:2 }}</div>
-    <div class="muted">IVA aplicado: {% if estimate.apply_tax %}Sí{% else %}No{% endif %}</div>
+    <div class="muted">IVA aplicado: {% if estimate.apply_tax %}S&iacute;{% else %}No{% endif %}</div>
     <form method="post" class="inline" style="margin-top:12px">
       {% csrf_token %}
       <input type="hidden" name="toggle_tax" value="1">
-      <button type="submit" class="btn {% if estimate.apply_tax %}secondary{% else %}primary{% endif %}">
+      <button type="submit" class="btn {% if estimate.apply_tax %}secondary{% else %}primary{% endif %}" data-action="toggle-iva">
         {% if estimate.apply_tax %}Quitar IVA{% else %}Agregar IVA{% endif %}
       </button>
     </form>
@@ -89,7 +89,7 @@
     {% if has_saved_items %}
       <form method="post" action="{% url 'estimate_send' order.pk %}" class="inline">
         {% csrf_token %}
-        <button type="submit" class="primary">Enviar cotizacion</button>
+        <button type="submit" class="primary" data-clear-draft="1">Enviar cotizacion</button>
       </form>
     {% endif %}
     {% if public_estimate_url %}
@@ -114,42 +114,147 @@
   </template>
 
   <script>
-    (function(){
-      const body = document.getElementById('items-body');
-      const template = document.getElementById('row-template').content;
-      const addRowBtn = document.getElementById('add-row');
+    (function () {
+      const FORM_ID = 'estimate-form';
+      const DRAFT_KEY = 'estimate_draft_v1';
+      const RESTORE_ONCE_KEY = DRAFT_KEY + '__restore_once';
 
-      function addRow(values) {
-        const clone = document.importNode(template, true);
-        if (values) {
-          clone.querySelector('input[name="description"]').value = values.description || '';
-          clone.querySelector('input[name="qty"]').value = values.qty || '1';
-          clone.querySelector('input[name="unit_price"]').value = values.unit_price || '0.00';
-          clone.querySelector('input[name="inventory_sku"]').value = values.inventory_sku || '';
-        }
-        body.appendChild(clone);
+      const form = document.getElementById(FORM_ID);
+      const body = document.getElementById('items-body');
+      const template = document.getElementById('row-template');
+      const addRowBtn = document.getElementById('add-row');
+      const noteField = document.getElementById('note');
+
+      if (!form || !body || !template) {
+        return;
       }
 
-      addRowBtn.addEventListener('click', function(){
-        addRow();
-      });
+      const getInputValue = (row, selector, fallback = '') => {
+        const input = row.querySelector(selector);
+        return input ? input.value : fallback;
+      };
 
-      body.addEventListener('click', function(evt){
-        if (evt.target.classList.contains('remove-row')) {
-          const row = evt.target.closest('tr');
+      const setInputValue = (row, selector, value) => {
+        const input = row.querySelector(selector);
+        if (!input) {
+          return;
+        }
+        input.value = value;
+      };
+
+      const addRow = (values) => {
+        const fragment = document.importNode(template.content, true);
+        const row = fragment.querySelector('tr');
+        if (row && values) {
+          setInputValue(row, 'input[name=\"description\"]', values.description || '');
+          setInputValue(row, 'input[name=\"qty\"]', values.qty || '1');
+          setInputValue(row, 'input[name=\"unit_price\"]', values.unit_price || '0.00');
+          setInputValue(row, 'input[name=\"inventory_sku\"]', values.inventory_sku || '');
+        }
+        body.appendChild(fragment);
+      };
+
+      const ensureAtLeastOneRow = () => {
+        if (!body.children.length) {
+          addRow();
+        }
+      };
+
+      const readRows = () =>
+        Array.from(body.querySelectorAll('tr')).map((row) => ({
+          description: getInputValue(row, 'input[name=\"description\"]'),
+          qty: getInputValue(row, 'input[name=\"qty\"]', '1'),
+          unit_price: getInputValue(row, 'input[name=\"unit_price\"]', '0.00'),
+          inventory_sku: getInputValue(row, 'input[name=\"inventory_sku\"]'),
+        }));
+
+      const saveDraft = () => {
+        try {
+          const payload = {
+            rows: readRows(),
+            note: noteField ? noteField.value : '',
+          };
+          localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+        } catch (_) {
+          // ignore storage issues (quota/private mode, etc.)
+        }
+      };
+
+      const clearDraftStorage = () => {
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(RESTORE_ONCE_KEY);
+      };
+
+      const restoreDraft = (data) => {
+        if (!data || typeof data !== 'object') {
+          return;
+        }
+        if (Array.isArray(data.rows) && data.rows.length) {
+          body.innerHTML = '';
+          data.rows.forEach((values) => addRow(values));
+        }
+        ensureAtLeastOneRow();
+        if (noteField && typeof data.note === 'string') {
+          noteField.value = data.note;
+        }
+      };
+
+      if (addRowBtn) {
+        addRowBtn.addEventListener('click', () => {
+          addRow();
+          saveDraft();
+        });
+      }
+
+      body.addEventListener('click', (event) => {
+        if (event.target.classList.contains('remove-row')) {
+          const row = event.target.closest('tr');
           if (row) {
             row.remove();
-            if (!body.children.length) {
-              addRow();
-            }
+            ensureAtLeastOneRow();
+            saveDraft();
           }
         }
       });
 
-      if (!body.children.length) {
-        addRow();
+      form.addEventListener('input', saveDraft);
+      form.addEventListener('change', saveDraft);
+      form.addEventListener('submit', clearDraftStorage);
+
+      let storedDraft = null;
+      try {
+        storedDraft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+      } catch (_) {
+        storedDraft = null;
       }
+
+      if (storedDraft) {
+        restoreDraft(storedDraft);
+      } else {
+        ensureAtLeastOneRow();
+      }
+
+      if (localStorage.getItem(RESTORE_ONCE_KEY)) {
+        if (storedDraft) {
+          restoreDraft(storedDraft);
+        }
+        localStorage.removeItem(RESTORE_ONCE_KEY);
+      }
+
+      document.querySelectorAll('[data-action=\"toggle-iva\"]').forEach((el) => {
+        el.addEventListener('click', () => {
+          saveDraft();
+          localStorage.setItem(RESTORE_ONCE_KEY, '1');
+        });
+      });
+
+      document.querySelectorAll('[data-clear-draft=\"1\"]').forEach((el) => {
+        el.addEventListener('click', () => {
+          clearDraftStorage();
+        });
+      });
     })();
   </script>
 </body>
 </html>
+

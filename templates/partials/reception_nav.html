@@ -6,6 +6,9 @@
     .reception-nav__links a:hover {background:rgba(255,255,255,0.2);}
     .reception-nav__links a.is-active {background:rgba(255,255,255,0.35);color:#0f172a;}
     .reception-nav__logo {display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;}
+    .reception-nav__bell {position:relative;display:inline-flex;align-items:center;gap:6px;}
+    .reception-nav__badge {position:absolute;top:2px;right:6px;background:#dc2626;color:#fff;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:700;line-height:1.4;}
+    .reception-nav__label {font-size:14px;}
   </style>
   <div class="reception-nav">
     <div class="reception-nav__logo">
@@ -17,6 +20,13 @@
       <a href="{% url 'reception_new_order' %}" class="{% if current_path == '/recepcion/nueva-orden/' %}is-active{% endif %}">Nueva orden</a>
       <a href="{% url 'list_orders' %}" class="{% if '/recepcion/ordenes/' in current_path or '/recepcion/orden/' in current_path %}is-active{% endif %}">&Oacute;rdenes</a>
       <a href="{% url 'inventory_list' %}" class="{% if '/inventario/' in current_path %}is-active{% endif %}">Inventario</a>
+      <a href="{% url 'notifications_list' %}" class="reception-nav__bell {% if '/notificaciones/' in current_path %}is-active{% endif %}">
+        <span aria-hidden="true">🔔</span>
+        <span class="reception-nav__label">Notificaciones</span>
+        {% if nav_notifications_unread %}
+          <span class="reception-nav__badge">{{ nav_notifications_unread }}</span>
+        {% endif %}
+      </a>
     </nav>
   </div>
 {% endwith %}

@@ -1,17 +1,22 @@
 ﻿# config/settings.py
 from pathlib import Path
 import os
-from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+
+# --- dotenv opcional (para CI no es requerido) ---
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv(BASE_DIR / ".env")
+except Exception:
+    pass
 
 # --- Core flags (defaults amigables para local/CI) ---
 SECRET_KEY = os.getenv("SECRET_KEY", "ci-dev-not-secure")
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
 ALLOWED_HOSTS = [h for h in os.getenv("ALLOWED_HOSTS", "*").split(",") if h]
 
-# CSRF para entornos comunes de pruebas/deploy; puedes ampliar por env
+# CSRF comunes; puedes ampliar por env
 CSRF_TRUSTED_ORIGINS = ["https://*.github.dev", "https://*.onrender.com"]
 EXTRA_CSRF = os.getenv("CSRF_TRUSTED_ORIGINS_EXTRA", "")
 if EXTRA_CSRF:
@@ -53,7 +58,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                # tu context processor de notificaciones:
+                # tu CP de notificaciones:
                 "core.context_processors.nav_notifications",
             ],
         },
@@ -62,12 +67,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# --- Base de datos: usa DATABASE_URL si existe; si no, SQLite (ideal para CI/local) ---
+# --- DB: usa DATABASE_URL si existe; si no, SQLite (ideal para CI/local) ---
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 try:
-    import dj_database_url  # aseguramos import disponible
+    import dj_database_url  # type: ignore
 except Exception:
-    dj_database_url = None
+    dj_database_url = None  # noqa
 
 if DATABASE_URL and dj_database_url:
     DATABASES = {
@@ -86,8 +91,7 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# En DEBUG usa storage simple (no exige collectstatic).
-# En producción usa WhiteNoise con manifest comprimido.
+# En DEBUG no exigimos collectstatic; en prod sí usamos WhiteNoise manifest
 if DEBUG:
     STORAGES = {
         "staticfiles": {
