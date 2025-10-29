@@ -10,6 +10,9 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1")
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 CSRF_TRUSTED_ORIGINS = ["https://*.github.dev", "https://*.onrender.com"]
+EXTRA_CSRF = os.getenv("CSRF_TRUSTED_ORIGINS_EXTRA", "")
+if EXTRA_CSRF:
+    CSRF_TRUSTED_ORIGINS += [origin.strip() for origin in EXTRA_CSRF.split(",") if origin.strip()]
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
@@ -56,6 +59,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.nav_notifications",
             ],
         },
     },

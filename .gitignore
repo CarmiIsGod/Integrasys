@@ -32,3 +32,12 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 *.log
+
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.sqlite3
+/media/
+/staticfiles/
+/backups/

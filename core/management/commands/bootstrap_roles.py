@@ -3,27 +3,33 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand
 
 from core.models import (
+    Attachment,
     Customer,
     Device,
     Estimate,
     InventoryItem,
     InventoryMovement,
+    Payment,
     ServiceOrder,
     StatusHistory,
 )
 
 
 class Command(BaseCommand):
-    help = "Create or update default groups for reception and technician roles."
+    help = "Create or update default groups for reception, technician, and management roles."
 
     def handle(self, *args, **options):
         group_specs = {
             "Recepcion": {
                 ServiceOrder: ["view", "add", "change"],
-                Customer: ["view", "add"],
-                Device: ["view", "add"],
+                Customer: ["view", "add", "change"],
+                Device: ["view", "add", "change"],
                 StatusHistory: ["view", "add"],
                 Estimate: ["view", "add", "change"],
+                InventoryItem: ["view", "add", "change"],
+                InventoryMovement: ["view", "add"],
+                Payment: ["view", "add"],
+                Attachment: ["view", "add"],
             },
             "Tecnico": {
                 ServiceOrder: ["view", "change"],
@@ -31,6 +37,18 @@ class Command(BaseCommand):
                 InventoryItem: ["view"],
                 InventoryMovement: ["view", "add"],
                 Estimate: ["view"],
+                Attachment: ["view", "add"],
+            },
+            "Gerencia": {
+                ServiceOrder: ["view", "add", "change", "delete"],
+                Customer: ["view", "add", "change", "delete"],
+                Device: ["view", "add", "change", "delete"],
+                StatusHistory: ["view", "add", "change"],
+                Estimate: ["view", "add", "change", "delete"],
+                InventoryItem: ["view", "add", "change", "delete"],
+                InventoryMovement: ["view", "add", "change", "delete"],
+                Payment: ["view", "add", "change", "delete"],
+                Attachment: ["view", "add", "change", "delete"],
             },
         }
 
