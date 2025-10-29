@@ -1,13 +1,14 @@
 from typing import Dict
-
-from .permissions import is_recepcion, is_tecnico, is_gerencia
 from .models import Notification
-
 
 def nav_notifications(request) -> Dict[str, object]:
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated:
         return {}
+
+    #  Import “perezoso” para evitar problemas durante `check` antes de migrar
+    from .permissions import is_recepcion, is_tecnico, is_gerencia
+
     if not (is_recepcion(user) or is_tecnico(user) or is_gerencia(user)):
         return {}
 
