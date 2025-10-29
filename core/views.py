@@ -25,6 +25,7 @@ import re
 import mimetypes
 from pathlib import Path
 from urllib.parse import quote, urlencode
+import logging
 
 from .forms import ReceptionForm, InventoryItemForm, AttachmentForm
 from .models import (
@@ -63,6 +64,8 @@ ALLOWED = {
 
 IVA_RATE = Decimal("0.16")
 TWO_PLACES = Decimal("0.01")
+
+logger = logging.getLogger(__name__)
 
 
 def _estimate_status_label(estimate):
@@ -105,6 +108,68 @@ def _build_estimate_form_context(request, order, estimate, *, form_items=None, n
         "public_estimate_url": public_url,
         "inventory_items": inventory_catalog,
     }
+
+
+def _resolve_order_folio(order):
+    folio = getattr(order, "folio", None)
+    if folio:
+        return folio
+    order_id = getattr(order, "id", None)
+    if order_id:
+        return f"SR-{order_id}"
+    return "SR-0000"
+
+
+def _build_device_label(order):
+    device = getattr(order, "device", None)
+    if not device:
+        return "Equipo"
+    parts = []
+    for attr in ("brand", "model"):
+        value = getattr(device, attr, "")
+        if value:
+            parts.append(value)
+    serial = getattr(device, "serial", "")
+    if serial:
+        if parts:
+            parts.append(f"({serial})")
+        else:
+            parts.append(serial)
+    label = " ".join(parts).strip()
+    if label:
+        return label
+    try:
+        return str(device)
+    except Exception:
+        return "Equipo"
+
+
+def _record_status_update(order, *, channel="status_change", ok=True, extra_payload=None, title=None):
+    try:
+        device = getattr(order, "device", None)
+        customer = getattr(device, "customer", None) if device else None
+        customer_name = getattr(customer, "name", "") if customer else ""
+        payload = {
+            "order_id": getattr(order, "id", None),
+            "order_folio": _resolve_order_folio(order),
+            "order": _resolve_order_folio(order),
+            "customer": customer_name,
+            "device": _build_device_label(order),
+            "status": getattr(order, "status", ""),
+            "status_display": order.get_status_display() if hasattr(order, "get_status_display") else getattr(order, "status", ""),
+        }
+        if extra_payload:
+            payload.update(extra_payload)
+        Notification.objects.create(
+            order=order,
+            kind="update",
+            channel=channel,
+            ok=ok,
+            title=title or f"Actualizacion {payload['order_folio']}",
+            payload=payload,
+        )
+    except Exception:
+        logger.exception("Error registrando notificacion de estado")
 
 
 def build_whatsapp_link(phone: str, text: str) -> str:
@@ -706,65 +771,109 @@ def add_payment(request, pk):
         messages.error(request, "El monto excede el saldo por cobrar.")
         return redirect("order_detail", pk=pk)
 
-    payment = Payment.objects.create(
-        order=order,
-        amount=amount,
-        method=method,
-        reference=reference,
-        author=request.user,
-    )
+    amount_display = ""
+    balance_display = ""
+    new_balance = None
+    payment = None
+    try:
+        with transaction.atomic():
+            payment = Payment.objects.create(
+                order=order,
+                amount=amount,
+                method=method,
+                reference=reference,
+                author=request.user,
+            )
 
-    amount_display = format(amount, ".2f")
-    new_balance = order.balance
-    balance_display = format(new_balance, ".2f")
+        amount_display = format(amount, ".2f")
+        new_balance = order.balance
+        balance_display = format(new_balance, ".2f")
 
-    customer_email = (getattr(order.device.customer, "email", "") or "").strip()
-    sender_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
-    if customer_email and sender_email:
-        email_lines = [
-            f"Hemos registrado tu pago de ${amount_display}.",
-            f"Metodo: {method}.",
-        ]
-        if reference:
-            email_lines.append(f"Referencia: {reference}.")
-        email_lines.append(f"Saldo pendiente: ${balance_display}.")
-        email_body = "\n".join(email_lines)
-        sent = send_mail(
-            subject=f"Pago registrado {order.folio}",
-            message=email_body,
-            from_email=sender_email,
-            recipient_list=[customer_email],
-            fail_silently=True,
-        )
-        payload = {
-            "to": customer_email,
-            "payment_id": payment.id,
-            "order": order.folio,
-            "sent": sent,
-            "amount": amount_display,
-            "method": method,
-            "balance": balance_display,
-        }
-        if sent <= 0:
-            payload["error"] = "Email no enviado"
-        Notification.objects.create(
-            order=order,
-            kind="email",
-            channel="payment",
-            ok=sent > 0,
-            payload=payload,
-        )
+        Status = ServiceOrder.Status
+        ready_value = getattr(Status, "READY", getattr(Status, "READY_PICKUP", "READY"))
+        ready_pickup_value = getattr(Status, "READY_PICKUP", ready_value)
+        auth_value = getattr(Status, "AUTH", getattr(Status, "REQUIRES_AUTH", "AUTH"))
+        done_value = getattr(Status, "DONE", getattr(Status, "DELIVERED", "DONE"))
+        try:
+            if new_balance == Decimal("0.00") and order.status in {ready_value, ready_pickup_value, auth_value}:
+                order.status = done_value
+                order.save(update_fields=["status"])
+                try:
+                    StatusHistory.objects.create(order=order, status=done_value, author=request.user)
+                except Exception:
+                    logger.exception("No se pudo guardar historial de cierre de orden")
+                _record_status_update(
+                    order,
+                    channel="status_auto_close",
+                    extra_payload={"trigger": "payment_zero"},
+                )
+        except Exception:
+            logger.exception("No se pudo cerrar la orden tras dejar saldo en cero")
 
-    messages.success(
-        request,
-        f"Pago de ${amount_display} registrado por {method}.",
-    )
+        device_label = _build_device_label(order)
+        folio = _resolve_order_folio(order)
+        customer = getattr(order.device, "customer", None)
+        customer_name = getattr(customer, "name", "") if customer else ""
+        customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""
 
-    if new_balance == Decimal("0.00") and order.status == ServiceOrder.Status.READY:
-        messages.info(
-            request,
-            "Saldo cubierto; ya puedes marcar la orden como Entregado (DONE).",
-        )
+        try:
+            Notification.objects.create(
+                order=order,
+                kind="payment",
+                channel="system",
+                ok=True,
+                title=f"Pago registrado {folio}",
+                payload={
+                    "order_id": order.id,
+                    "order_folio": folio,
+                    "order": folio,
+                    "customer": customer_name,
+                    "amount": amount_display,
+                    "method": method,
+                    "reference": reference,
+                    "new_balance": balance_display,
+                    "device": device_label,
+                    "payment_id": payment.id if payment else None,
+                },
+            )
+        except Exception:
+            logger.exception("Error registrando notificacion de pago")
+
+        sender_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+        if customer_email and sender_email:
+            try:
+                subject = f"Pago registrado {folio}"
+                body_lines = [
+                    f"Hola {customer_name or 'cliente'},",
+                    "",
+                    f"Registramos tu pago por ${amount_display} via {method}.",
+                ]
+                if reference:
+                    body_lines.append(f"Referencia: {reference}")
+                body_lines.append(f"Saldo restante: ${balance_display}.")
+                body_lines.append("")
+                body_lines.append("Gracias por tu preferencia.")
+                body = "\n".join(body_lines)
+                send_mail(
+                    subject=subject,
+                    message=body,
+                    from_email=sender_email,
+                    recipient_list=[customer_email],
+                    fail_silently=True,
+                )
+            except Exception:
+                logger.exception("Error enviando correo de pago")
+        elif not customer_email:
+            messages.info(request, "Pago registrado, pero el cliente no tiene correo para notificar.")
+    except Exception as exc:
+        logger.exception("Error registrando pago")
+        messages.error(request, f"No se pudo registrar el pago: {exc}")
+        return redirect("order_detail", pk=pk)
+
+    messages.success(request, "Pago registrado correctamente.")
+
+    if new_balance is not None and new_balance > Decimal("0.00"):
+        messages.info(request, f"Saldo pendiente: ${balance_display}.")
 
     return redirect("order_detail", pk=pk)
 
@@ -787,12 +896,25 @@ def change_status_auth(request, pk):
         messages.error(request, "No tienes permiso para solicitar autorizacion.")
         return redirect("order_detail", pk=order.pk)
 
+    device_label = _build_device_label(order)
+    customer = getattr(order.device, "customer", None)
+    customer_name = getattr(customer, "name", "") if customer else ""
+    order_folio = _resolve_order_folio(order)
+
     estimate, _ = Estimate.objects.get_or_create(order=order)
 
     order.status = ServiceOrder.Status.REQUIRES_AUTH
     order.save(update_fields=["status"])
 
     StatusHistory.objects.create(order=order, status=ServiceOrder.Status.REQUIRES_AUTH, author=request.user)
+    _record_status_update(
+        order,
+        channel="status_requires_authorization",
+        extra_payload={
+            "target": ServiceOrder.Status.REQUIRES_AUTH,
+            "changed_by": getattr(request.user, "username", ""),
+        },
+    )
 
     email = (order.device.customer.email or "").strip()
     payload = {}
@@ -808,6 +930,11 @@ def change_status_auth(request, pk):
             "public_status": public_status_url,
             "public_estimate": public_estimate_url,
             "has_items": has_items,
+            "order_folio": order_folio,
+            "order": order_folio,
+            "customer": customer_name,
+            "device": device_label,
+            "status": order.status,
         }
         subject = f"Orden {order.folio} requiere autorizacion"
         body_lines = [
@@ -835,7 +962,14 @@ def change_status_auth(request, pk):
         except Exception as exc:
             error_message = str(exc)
     else:
-        payload = {"error": "missing_email"}
+        payload = {
+            "error": "missing_email",
+            "order_folio": order_folio,
+            "order": order_folio,
+            "customer": customer_name,
+            "device": device_label,
+            "status": order.status,
+        }
         messages.warning(request, "El cliente no tiene correo registrado; agrega uno para notificar.")
 
     if error_message:
@@ -871,6 +1005,11 @@ def change_status(request, pk):
     target = request.POST.get("target")
     allowed = ALLOWED.get(order.status, [])
 
+    device_label = _build_device_label(order)
+    customer = getattr(order.device, "customer", None)
+    customer_name = getattr(customer, "name", "") if customer else ""
+    order_folio = _resolve_order_folio(order)
+
     if target not in allowed:
         messages.error(request, "Transicion de estado invalida.")
         return redirect("list_orders")
@@ -901,6 +1040,14 @@ def change_status(request, pk):
     order.save()
 
     StatusHistory.objects.create(order=order, status=target, author=request.user)
+    _record_status_update(
+        order,
+        channel="status_change",
+        extra_payload={
+            "target": target,
+            "changed_by": getattr(request.user, "username", ""),
+        },
+    )
 
     cust_email = (order.device.customer.email or "").strip()
     if cust_email and target in ("READY", "DONE"):
@@ -915,11 +1062,36 @@ def change_status(request, pk):
         )
         try:
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [cust_email], fail_silently=False)
-            Notification.objects.create(order=order, kind="email", channel="status", ok=True,
-                                        payload={"to": cust_email, "target": target})
+            Notification.objects.create(
+                order=order,
+                kind="email",
+                channel="status",
+                ok=True,
+                payload={
+                    "to": cust_email,
+                    "target": target,
+                    "order": order_folio,
+                    "order_folio": order_folio,
+                    "customer": customer_name,
+                    "device": device_label,
+                },
+            )
         except Exception as exc:
-            Notification.objects.create(order=order, kind="email", channel="status", ok=False,
-                                        payload={"to": cust_email, "target": target, "error": str(exc)})
+            Notification.objects.create(
+                order=order,
+                kind="email",
+                channel="status",
+                ok=False,
+                payload={
+                    "to": cust_email,
+                    "target": target,
+                    "order": order_folio,
+                    "error": str(exc),
+                    "order_folio": order_folio,
+                    "customer": customer_name,
+                    "device": device_label,
+                },
+            )
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
@@ -1455,7 +1627,14 @@ def estimate_send(request, pk):
         kind="email",
         channel="estimate_send",
         ok=ok,
-        payload={"to": email, "estimate": str(estimate.token), "url": public_url},
+        payload={
+            "to": email,
+            "estimate": str(estimate.token),
+            "url": public_url,
+            "order_folio": _resolve_order_folio(order),
+            "order": _resolve_order_folio(order),
+            "customer": order.device.customer.name,
+        },
     )
 
     if ok:
@@ -1563,8 +1742,11 @@ def estimate_approve(request, token):
         title=f"Cotizacion {order.folio} aprobada",
         payload={
             "order_id": order.pk,
+            "order_folio": _resolve_order_folio(order),
+            "order": _resolve_order_folio(order),
             "folio": order.folio,
             "customer": order.device.customer.name,
+            "device": _build_device_label(order),
             "total": total_display,
             "approved_at": timezone.localtime(now).isoformat(),
         },
@@ -1621,8 +1803,11 @@ def estimate_decline(request, token):
         title=f"Cotizacion {order.folio} rechazada",
         payload={
             "order_id": order.pk,
+            "order_folio": _resolve_order_folio(order),
+            "order": _resolve_order_folio(order),
             "folio": order.folio,
             "customer": order.device.customer.name,
+            "device": _build_device_label(order),
             "total": total_display,
             "declined_at": timezone.localtime(now).isoformat(),
         },

@@ -1,4 +1,5 @@
 <!doctype html>
+{% load notification_extras %}
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -43,21 +44,87 @@
       {% for notif in notifications %}
         <article class="notif {% if not notif.seen_at %}notif--unread{% endif %}">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-            <h2>{{ notif.title|default:"Actualizacion" }}</h2>
+            <h2>
+              {% if notif.kind == "estimate" %}
+                {{ notif.title|default:"Cotizacion" }}
+              {% elif notif.kind == "payment" %}
+                {{ notif.title|default:"Pago registrado" }}
+              {% elif notif.kind == "stock" %}
+                {{ notif.title|default:"Stock" }}
+              {% else %}
+                {{ notif.title|default:"Actualizacion" }}
+              {% endif %}
+            </h2>
             <span class="pill">{{ notif.kind|upper }}</span>
           </div>
-          {% if notif.payload.customer %}
-            <div>Cliente: <strong>{{ notif.payload.customer }}</strong></div>
-          {% endif %}
-          {% if notif.payload.folio %}
-            <div>Orden: <strong>{{ notif.payload.folio }}</strong></div>
-          {% endif %}
-          {% if notif.payload.total %}
-            <div>Total: ${{ notif.payload.total }}</div>
-          {% endif %}
+
+          <div style="margin-top:8px;display:grid;gap:4px;">
+            {% if notif.kind == "payment" %}
+              {% payload_first notif.payload "order_folio" "order_id" "order" as order_ref %}
+              {% if order_ref %}<div>Orden: {{ order_ref }}</div>{% endif %}
+              {% payload_first notif.payload "customer" "customer_name" as customer_name %}
+              {% if customer_name %}<div>Cliente: {{ customer_name }}</div>{% endif %}
+              {% payload_first notif.payload "device" "device_label" "equipment" as device_label %}
+              {% if device_label %}<div>Equipo: {{ device_label }}</div>{% endif %}
+              {% with method=notif.payload|payload_get:"method" %}
+                {% if method %}<div>M&eacute;todo: {{ method }}</div>{% endif %}
+              {% endwith %}
+              {% with amount=notif.payload|payload_get:"amount" %}
+                {% if amount %}<div>Monto: ${{ amount }}</div>{% endif %}
+              {% endwith %}
+              {% with balance=notif.payload|payload_get:"new_balance" %}
+                {% if balance %}<div>Saldo: ${{ balance }}</div>{% endif %}
+              {% endwith %}
+              {% with reference=notif.payload|payload_get:"reference" %}
+                {% if reference %}<div>Referencia: {{ reference }}</div>{% endif %}
+              {% endwith %}
+
+            {% elif notif.kind == "estimate" %}
+              {% payload_first notif.payload "order_folio" "order_id" "order" as order_ref %}
+              {% if order_ref %}<div>Orden: {{ order_ref }}</div>{% endif %}
+              {% payload_first notif.payload "customer" "customer_name" as customer_name %}
+              {% if customer_name %}<div>Cliente: {{ customer_name }}</div>{% endif %}
+              {% payload_first notif.payload "device" "device_label" "equipment" as device_label %}
+              {% if device_label %}<div>Equipo: {{ device_label }}</div>{% endif %}
+              {% with total=notif.payload|payload_get:"total" %}
+                {% if total %}<div>Total: ${{ total }}</div>{% endif %}
+              {% endwith %}
+
+            {% elif notif.kind == "stock" %}
+              {% payload_first notif.payload "item_name" "name" as product_name %}
+              {% if product_name %}<div>Producto: {{ product_name }}</div>{% endif %}
+              {% with sku=notif.payload|payload_get:"sku" %}
+                {% if sku %}<div>SKU: {{ sku }}</div>{% endif %}
+              {% endwith %}
+              {% with qty=notif.payload|payload_get:"qty" %}
+                {% if qty|has_value %}<div>Quedan: {{ qty }}</div>{% endif %}
+              {% endwith %}
+              {% with min_qty=notif.payload|payload_get:"min_qty" %}
+                {% if min_qty|has_value %}<div>M&iacute;nimo: {{ min_qty }}</div>{% endif %}
+              {% endwith %}
+              {% with location=notif.payload|payload_get:"location" %}
+                {% if location %}<div>Ubicaci&oacute;n: {{ location }}</div>{% endif %}
+              {% endwith %}
+
+            {% else %}
+              {% payload_first notif.payload "order_folio" "order_id" "order" as order_ref %}
+              {% if order_ref %}<div>Orden: {{ order_ref }}</div>{% endif %}
+              {% payload_first notif.payload "customer" "customer_name" as customer_name %}
+              {% if customer_name %}<div>Cliente: {{ customer_name }}</div>{% endif %}
+              {% payload_first notif.payload "device" "device_label" "equipment" as device_label %}
+              {% if device_label %}<div>Equipo: {{ device_label }}</div>{% endif %}
+              {% payload_first notif.payload "status_display" "status" as status_label %}
+              {% if status_label %}<div>Estado: {{ status_label }}</div>{% endif %}
+              {% with changed_by=notif.payload|payload_get:"changed_by" %}
+                {% if changed_by %}<div>Actualizado por: {{ changed_by }}</div>{% endif %}
+              {% endwith %}
+            {% endif %}
+          </div>
+
           {% if notif.payload.error %}
-            <div style="color:#b91c1c;">Error: {{ notif.payload.error }}</div>
+            <div style="color:#b91c1c;margin-top:6px;">Error: {{ notif.payload.error }}</div>
           {% endif %}
+
           <time>Creado: {{ notif.created_at|date:"Y-m-d H:i" }}{% if notif.seen_at %} &middot; Le&iacute;do: {{ notif.seen_at|date:"Y-m-d H:i" }}{% endif %}</time>
         </article>
       {% empty %}
