@@ -1,0 +1,17 @@
+[Unit]
+Description=Gunicorn Integrasys
+After=network.target
+
+[Service]
+User=integrasys
+Group=www-data
+WorkingDirectory=/srv/integrasys/app
+EnvironmentFile=/srv/integrasys/.env
+ExecStart=/srv/integrasys/venv/bin/gunicorn config.wsgi:application \
+  --bind unix:/srv/integrasys/run/gunicorn.sock \
+  --workers 3 --timeout 60
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

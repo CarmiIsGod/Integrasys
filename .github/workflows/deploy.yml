@@ -1,0 +1,28 @@
+name: Deploy to VPS
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            APP_DIR=/srv/integrasys
+            cd $APP_DIR/app
+            git fetch --all
+            git checkout ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }} || true
+            $APP_DIR/venv/bin/pip install -r requirements.txt
+            $APP_DIR/venv/bin/python manage.py migrate --noinput
+            $APP_DIR/venv/bin/python manage.py collectstatic --noinput
+            sudo systemctl restart gunicorn.integrasys
