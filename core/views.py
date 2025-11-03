@@ -2014,8 +2014,10 @@ def export_orders_csv(request):
             Q(device__serial__icontains=q)
         )
 
+    filename = f"ordenes_{timezone.localdate().isoformat()}.csv"
     resp = HttpResponse(content_type="text/csv; charset=utf-8")
-    resp["Content-Disposition"] = "attachment; filename=ordenes.csv"
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    resp.write("\ufeff")  # BOM so Excel reads UTF-8 correctly
     w = csv.writer(resp)
     w.writerow(["ID","Folio","Estado","Cliente","Telefono","Correo","Tecnico","Ingreso","Entrega","TotalAprobado","Pagado","Saldo","Cotizacion","Notas","URLPublico"])
     for o in qs:
@@ -2023,8 +2025,10 @@ def export_orders_csv(request):
         telefono = getattr(cliente_obj, "phone", "")
         correo = getattr(cliente_obj, "email", "")
         tecnico = o.assigned_to.get_username() if o.assigned_to_id else ""
-        ingreso = timezone.localtime(o.checkin_at).strftime("%Y-%m-%d %H:%M") if getattr(o, "checkin_at", None) else ""
-        entrega = timezone.localtime(o.checkout_at).strftime("%Y-%m-%d %H:%M") if getattr(o, "checkout_at", None) else ""
+        ingreso_dt = timezone.localtime(o.checkin_at) if getattr(o, "checkin_at", None) else None
+        entrega_dt = timezone.localtime(o.checkout_at) if getattr(o, "checkout_at", None) else None
+        ingreso = f"'{ingreso_dt.strftime('%Y-%m-%d %H:%M')}" if ingreso_dt else ""
+        entrega = f"'{entrega_dt.strftime('%Y-%m-%d %H:%M')}" if entrega_dt else ""
         total_aprobado = o.approved_total.quantize(TWO_PLACES) if hasattr(o.approved_total, "quantize") else Decimal(o.approved_total or 0).quantize(TWO_PLACES)
         total_pagado = o.paid_total.quantize(TWO_PLACES) if hasattr(o.paid_total, "quantize") else Decimal(o.paid_total or 0).quantize(TWO_PLACES)
         saldo = o.balance.quantize(TWO_PLACES) if hasattr(o.balance, "quantize") else Decimal(o.balance or 0).quantize(TWO_PLACES)
