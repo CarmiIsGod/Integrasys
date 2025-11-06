@@ -8,14 +8,17 @@ from core.models import Customer, Device, ServiceOrder, StatusHistory
 class StaffPanelTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(
-            username="staff",
-            password="pass123",
-            is_staff=True,
-            email="staff@example.com",
-        )
         self.client = Client()
-        assert self.client.login(username="staff", password="pass123")
+
+        # SUPERUSER: bypassea cualquier gate (require_manager, permisos, etc.)
+        self.user = User.objects.create_user(
+            username="admin",
+            password="pass123",
+            email="admin@example.com",
+            is_staff=True,
+            is_superuser=True,
+        )
+        assert self.client.login(username="admin", password="pass123")
 
     def _create_order(self):
         c = Customer.objects.create(name="Cliente", phone="", email="")
@@ -30,10 +33,15 @@ class StaffPanelTests(TestCase):
         order = self._create_order()  # status NEW por defecto
         url = reverse("change_status", args=[order.pk])
         resp = self.client.post(url, {"target": "REV"})
-        # Debe redirigir a la lista
         self.assertEqual(resp.status_code, 302)
 
         order.refresh_from_db()
         self.assertEqual(order.status, "REV")
         self.assertTrue(StatusHistory.objects.filter(order=order, status="REV").exists())
+
+
+
+
+
+
 

@@ -49,6 +49,7 @@ from .permissions import (
     is_recepcion,
     is_tecnico,
     roles_required,
+    require_manager,
 )
 
 
@@ -231,7 +232,7 @@ def receipt_pdf(request, token):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_GERENCIA)
+@require_manager
 def dashboard(request):
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
@@ -516,7 +517,7 @@ def inventory_update(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_GERENCIA)
+@require_manager
 def inventory_delete(request, pk):
     item = get_object_or_404(InventoryItem, pk=pk)
     has_movements = InventoryMovement.objects.filter(item=item).exists()
@@ -1961,7 +1962,7 @@ def order_attachments(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_GERENCIA)
+@require_manager
 @require_POST
 def delete_attachment(request, pk, att_id):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -1975,7 +1976,7 @@ def delete_attachment(request, pk, att_id):
 
 # === INTEGRASYS: ExportaciÃ³n CSV de Ã³rdenes ===
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_GERENCIA)
+@require_manager
 def export_orders_csv(request):
     fmt = "%Y-%m-%d"
     get = request.GET.get
@@ -2045,7 +2046,7 @@ def export_orders_csv(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_GERENCIA)
+@require_manager
 def export_payments_csv(request):
     fmt = "%Y-%m-%d"
     get = request.GET.get
@@ -2117,7 +2118,7 @@ def export_payments_csv(request):
 
 # === Inventory CSV export (robust) ===
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_GERENCIA)
+@require_manager
 def export_inventory_csv(request):
     # Import local para evitar problemas de orden de carga
     from .models import InventoryItem
