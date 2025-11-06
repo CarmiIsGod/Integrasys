@@ -84,6 +84,9 @@
             <div class="filter-actions">
                 <button type="submit">Filtrar</button>
                 <a class="btn-secondary" href="{% url 'dashboard' %}">Limpiar</a>
+                {% if is_manager %}
+                <a class="btn-secondary" href="{% url 'panel_exports' %}">Exportar CSV</a>
+                {% endif %}
             </div>
         </form>
 

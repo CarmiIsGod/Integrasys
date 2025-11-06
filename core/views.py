@@ -48,6 +48,7 @@ from .permissions import (
     is_gerencia,
     is_recepcion,
     is_tecnico,
+    is_manager,
     roles_required,
     require_manager,
 )
@@ -425,6 +426,7 @@ def dashboard(request):
         "staff_users": staff_users,
         "status_preserve_query": status_preserve_query,
     }
+    context["is_manager"] = is_manager(request.user)
     return render(request, "dashboard.html", context)
 
 
@@ -649,6 +651,7 @@ def list_orders(request):
         "is_technician": is_technician,
         "is_superuser": is_superuser,
     }
+    context["is_manager"] = is_manager(request.user)
     return render(request, "reception_orders.html", context)
 
 @login_required(login_url="/admin/login/")
@@ -1841,9 +1844,27 @@ def notifications_mark_all_read(request):
     return redirect("notifications_list")
 
 # === INTEGRASYS PATCH: ATTACHMENTS VIEW ===
-ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+def _max_file_mb():
+    try:
+        return int(getattr(settings, "MAX_FILE_MB", 20))
+    except (TypeError, ValueError):
+        return 20
+
+
+def _attachment_max_bytes():
+    return _max_file_mb() * 1024 * 1024
+
+
 ATTACHMENT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-ATTACHMENT_ALLOWED_EXTENSIONS = ATTACHMENT_IMAGE_EXTENSIONS | {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"}
+ATTACHMENT_ALLOWED_EXTENSIONS = ATTACHMENT_IMAGE_EXTENSIONS | {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".txt",
+    ".csv",
+}
 ATTACHMENT_ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/msword",
@@ -1851,6 +1872,7 @@ ATTACHMENT_ALLOWED_MIME_TYPES = {
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/plain",
+    "text/csv",
 }
 ATTACHMENT_IMAGE_PREFIXES = ("image/",)
 
@@ -1905,28 +1927,36 @@ def order_attachments(request, pk):
             return redirect("order_attachments", pk=order.pk)
         valid_files = []
         rejected = []
-        max_size_mb = ATTACHMENT_MAX_BYTES // (1024 * 1024)
+        max_file_mb = _max_file_mb()
+        max_bytes = _attachment_max_bytes()
         for uploaded in files:
             file_name = getattr(uploaded, "name", "archivo")
+            base_name = Path(file_name).name
             size = getattr(uploaded, "size", 0) or 0
-            if size > ATTACHMENT_MAX_BYTES:
-                rejected.append(f"{file_name}: excede {max_size_mb} MB.")
+            if size > max_bytes:
+                rejected.append(f"{file_name}: excede {max_file_mb} MB.")
                 continue
             if not _attachment_allowed(uploaded):
                 rejected.append(f"{file_name}: tipo no permitido.")
                 continue
-            name_key = Path(file_name).name.lower()
+            name_key = base_name.lower()
             if name_key in existing_filenames:
                 rejected.append(f"{file_name}: ya existe en la orden.")
                 continue
             existing_filenames.add(name_key)
-            valid_files.append(uploaded)
+            valid_files.append((uploaded, base_name))
         if not valid_files:
             for msg_text in rejected:
                 messages.error(request, msg_text)
             return redirect("order_attachments", pk=order.pk)
         created = 0
-        for uploaded in valid_files:
+        file_field = Attachment._meta.get_field("file")
+        for uploaded, base_name in valid_files:
+            temp_instance = Attachment(service_order=order)
+            target_name = file_field.generate_filename(temp_instance, base_name)
+            storage = file_field.storage
+            if storage.exists(target_name):
+                storage.delete(target_name)
             data = {"service_order": order, "file": uploaded}
             if hasattr(Attachment, "caption"):
                 data["caption"] = caption_value
@@ -1948,13 +1978,17 @@ def order_attachments(request, pk):
         att.size_display = _format_bytes(size_value)
         att.is_image = _attachment_is_image(name)
 
-    accept_attr = ",".join(sorted(ATTACHMENT_ALLOWED_EXTENSIONS))
+    max_file_mb = _max_file_mb()
+    non_image_exts = sorted(ATTACHMENT_ALLOWED_EXTENSIONS - ATTACHMENT_IMAGE_EXTENSIONS)
+    accept_values = ["image/*"] + non_image_exts
+    accept_attr = ",".join(accept_values)
     form = AttachmentForm() if AttachmentForm else None
     context = {
         "order": order,
         "attachments": attachments,
         "form": form,
-        "max_size_mb": ATTACHMENT_MAX_BYTES // (1024 * 1024),
+        "max_size_mb": max_file_mb,
+        "total_limit_hint": f"No subas mas de {max_file_mb} MB totales por envio.",
         "allowed_extensions": ", ".join(sorted(e.lstrip(".").upper() for e in ATTACHMENT_ALLOWED_EXTENSIONS)),
         "accept_attr": accept_attr,
     }
@@ -1974,151 +2008,6 @@ def delete_attachment(request, pk, att_id):
     messages.success(request, "Adjunto eliminado.")
     return redirect("order_attachments", pk=order.pk)
 
-# === INTEGRASYS: ExportaciÃ³n CSV de Ã³rdenes ===
-@login_required(login_url="/admin/login/")
-@require_manager
-def export_orders_csv(request):
-    fmt = "%Y-%m-%d"
-    get = request.GET.get
-    dfrom = get("from") or get("desde")
-    dto   = get("to")   or get("hasta")
-    status = get("status") or ""
-    assignee = get("assignee") or ""
-    q = get("q") or ""
-
-    qs = ServiceOrder.objects.select_related("device__customer", "assigned_to").order_by("-checkin_at")
-    tz = timezone.get_current_timezone()
-    if dfrom:
-        try:
-            start = datetime.strptime(dfrom, fmt)
-            if settings.USE_TZ and timezone.is_naive(start):
-                start = tz.localize(start)
-            qs = qs.filter(checkin_at__gte=start)
-        except ValueError:
-            pass
-    if dto:
-        try:
-            end = datetime.strptime(dto, fmt)
-            if settings.USE_TZ and timezone.is_naive(end):
-                end = tz.localize(end)
-            qs = qs.filter(checkin_at__lt=end + timedelta(days=1))
-        except ValueError:
-            pass
-    if status: qs = qs.filter(status=status)
-    if assignee: qs = qs.filter(assigned_to_id=assignee)
-    if q:
-        qs = qs.filter(
-            Q(folio__icontains=q) |
-            Q(device__customer__name__icontains=q) |
-            Q(device__brand__icontains=q) |
-            Q(device__model__icontains=q) |
-            Q(device__serial__icontains=q)
-        )
-
-    filename = f"ordenes_{timezone.localdate().isoformat()}.csv"
-    resp = HttpResponse(content_type="text/csv; charset=utf-8")
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-    resp.write("\ufeff")  # BOM so Excel reads UTF-8 correctly
-    w = csv.writer(resp)
-    w.writerow(["ID","Folio","Estado","Cliente","Telefono","Correo","Tecnico","Ingreso","Entrega","TotalAprobado","Pagado","Saldo","Cotizacion","Notas","URLPublico"])
-    for o in qs:
-        cliente_obj = o.device.customer if o.device_id else None
-        telefono = getattr(cliente_obj, "phone", "")
-        correo = getattr(cliente_obj, "email", "")
-        tecnico = o.assigned_to.get_username() if o.assigned_to_id else ""
-        ingreso_dt = timezone.localtime(o.checkin_at) if getattr(o, "checkin_at", None) else None
-        entrega_dt = timezone.localtime(o.checkout_at) if getattr(o, "checkout_at", None) else None
-        ingreso = f"'{ingreso_dt.strftime('%Y-%m-%d %H:%M')}" if ingreso_dt else ""
-        entrega = f"'{entrega_dt.strftime('%Y-%m-%d %H:%M')}" if entrega_dt else ""
-        total_aprobado = o.approved_total.quantize(TWO_PLACES) if hasattr(o.approved_total, "quantize") else Decimal(o.approved_total or 0).quantize(TWO_PLACES)
-        total_pagado = o.paid_total.quantize(TWO_PLACES) if hasattr(o.paid_total, "quantize") else Decimal(o.paid_total or 0).quantize(TWO_PLACES)
-        saldo = o.balance.quantize(TWO_PLACES) if hasattr(o.balance, "quantize") else Decimal(o.balance or 0).quantize(TWO_PLACES)
-        try:
-            estimate = o.estimate
-        except Estimate.DoesNotExist:
-            estimate = None
-        cotizacion = _estimate_status_label(estimate) if estimate else "Sin cotizacion"
-        notas = (o.notes or "").replace("\r", " ").replace("\n", " ").strip()
-        public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
-        cliente = cliente_obj.name if cliente_obj else ""
-        w.writerow([o.id, o.folio, o.get_status_display(), cliente, telefono, correo, tecnico, ingreso, entrega, f"{total_aprobado}", f"{total_pagado}", f"{saldo}", cotizacion, notas, public_url])
-    return resp
-
-
-@login_required(login_url="/admin/login/")
-@require_manager
-def export_payments_csv(request):
-    fmt = "%Y-%m-%d"
-    get = request.GET.get
-    dfrom = (get("from") or get("desde") or "").strip()
-    dto = (get("to") or get("hasta") or "").strip()
-    status = (get("status") or "").strip()
-    assignee = (get("assignee") or "").strip()
-    query = (get("q") or "").strip()
-
-    payments = (
-        Payment.objects.select_related("order", "order__device__customer", "order__assigned_to", "author")
-        .order_by("-created_at")
-    )
-
-    tz = timezone.get_current_timezone()
-    if dfrom:
-        try:
-            start = datetime.strptime(dfrom, fmt)
-            if settings.USE_TZ and timezone.is_naive(start):
-                start = tz.localize(start)
-            payments = payments.filter(created_at__gte=start)
-        except ValueError:
-            pass
-    if dto:
-        try:
-            end = datetime.strptime(dto, fmt)
-            if settings.USE_TZ and timezone.is_naive(end):
-                end = tz.localize(end)
-            payments = payments.filter(created_at__lt=end + timedelta(days=1))
-        except ValueError:
-            pass
-    if status:
-        payments = payments.filter(order__status=status)
-    if assignee:
-        payments = payments.filter(order__assigned_to_id=assignee)
-    if query:
-        payments = payments.filter(
-            Q(order__folio__icontains=query)
-            | Q(order__device__customer__name__icontains=query)
-            | Q(order__device__brand__icontains=query)
-            | Q(order__device__model__icontains=query)
-            | Q(order__device__serial__icontains=query)
-        )
-
-    resp = HttpResponse(content_type="text/csv; charset=utf-8")
-    resp["Content-Disposition"] = "attachment; filename=pagos.csv"
-    w = csv.writer(resp)
-    w.writerow(["PagoID", "OrdenID", "Folio", "Cliente", "Monto", "Metodo", "Referencia", "Autor", "Fecha", "EstadoOrden", "Tecnico"])
-
-    for p in payments:
-        order = p.order
-        customer = order.device.customer if order and order.device_id else None
-        amount = p.amount.quantize(TWO_PLACES) if hasattr(p.amount, "quantize") else Decimal(p.amount or 0).quantize(TWO_PLACES)
-        fecha = timezone.localtime(p.created_at).strftime("%Y-%m-%d %H:%M") if p.created_at else ""
-        w.writerow([
-            p.id,
-            order.id if order else "",
-            order.folio if order else "",
-            customer.name if customer else "",
-            f"{amount}",
-            p.method,
-            p.reference,
-            p.author.get_username() if p.author_id else "",
-            fecha,
-            order.get_status_display() if order else "",
-            order.assigned_to.get_username() if order and order.assigned_to_id else "",
-        ])
-    return resp
-
-# === Inventory CSV export (robust) ===
-@login_required(login_url="/admin/login/")
-@require_manager
 def export_inventory_csv(request):
     # Import local para evitar problemas de orden de carga
     from .models import InventoryItem

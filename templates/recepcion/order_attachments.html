@@ -55,7 +55,7 @@
         <label>Selecciona archivos
           <input type="file" name="file" multiple required{% if accept_attr %} accept="{{ accept_attr }}"{% endif %}>
         </label>
-        <p class="muted">Máximo {{ max_size_mb }} MB por archivo. Tipos permitidos: {{ allowed_extensions }}.</p>
+        <p class="muted">Maximo {{ max_size_mb }} MB por archivo. {{ total_limit_hint }} Tipos permitidos: {{ allowed_extensions }}.</p>
         <button type="submit">Subir adjuntos</button>
       </form>
     </section>

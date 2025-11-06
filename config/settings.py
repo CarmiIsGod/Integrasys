@@ -15,6 +15,7 @@ except Exception:
 SECRET_KEY = os.getenv("SECRET_KEY", "ci-dev-not-secure")
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
 ALLOWED_HOSTS = [h for h in os.getenv("ALLOWED_HOSTS", "*").split(",") if h]
+MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "20"))
 
 # CSRF comunes; puedes ampliar por env
 CSRF_TRUSTED_ORIGINS = ["https://*.github.dev", "https://*.onrender.com"]
@@ -91,22 +92,32 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# En DEBUG no exigimos collectstatic; en prod sí usamos WhiteNoise manifest
-if DEBUG:
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-        }
-    }
-else:
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        }
-    }
+# --- Storage backends (para code/tests/prod) ---
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    if SECURE_HSTS_SECONDS:
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+        SECURE_HSTS_PRELOAD = True
+else:
+    SECURE_HSTS_SECONDS = 0
 
 # --- i18n / TZ ---
 LANGUAGE_CODE = "es-mx"

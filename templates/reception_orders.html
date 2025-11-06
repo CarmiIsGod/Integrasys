@@ -67,7 +67,9 @@
         <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;">
           <button type="submit">Aplicar filtros</button>
           <a href="{% url 'list_orders' %}" class="btn btn-ghost">Limpiar</a>
-          <a href="{% url 'export_orders_csv' %}?q={{ query }}&amp;status={{ status }}&amp;assignee={{ assignee }}&amp;from={{ dfrom }}&amp;to={{ dto }}" class="btn btn-ghost">Exportar CSV</a>
+          {% if is_manager %}
+          <a href="{% url 'panel_exports' %}" class="btn btn-ghost">Exportar CSV</a>
+          {% endif %}
         </div>
       </form>
     </section>

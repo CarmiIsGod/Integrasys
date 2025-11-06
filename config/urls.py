@@ -1,16 +1,17 @@
 from django.contrib import admin
 from django.urls import path, include, re_path  # INTEGRASYS, , re_path
 from core import views as core_views  # INTEGRASYS, re_path, include
-from django.views.generic import RedirectView   
+from django.views.generic import RedirectView
 from core import views
+from core import views_exports
 from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
     path("recepcion/", core_views.reception_home, name="reception_home"),
     path("reportes/inventario.csv", core_views.export_inventory_csv, name="export_inventory_csv"),  # INTEGRASYS
-    path("reportes/ordenes.csv", core_views.export_orders_csv, name="export_orders_csv"),  # INTEGRASYS
-    path("reportes/pagos.csv", core_views.export_payments_csv, name="export_payments_csv"),
+    path("reportes/ordenes.csv", views_exports.export_orders_csv, name="export_orders_csv"),  # INTEGRASYS
+    path("reportes/pagos.csv", views_exports.export_payments_csv, name="export_payments_csv"),
     path("recepcion/orden/<int:pk>/adjuntos/<int:att_id>/eliminar/", core_views.delete_attachment, name="delete_attachment"),  # INTEGRASYS
     # Redirige la raíz al panel de órdenes (puedes cambiar a "/admin/" si prefieres)
     path("", RedirectView.as_view(url="/recepcion/", permanent=False)),
@@ -20,6 +21,9 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
     path("panel/", views.dashboard, name="dashboard"),
+    path("panel/exports/", views_exports.exports_home, name="panel_exports"),
+    path("panel/exports/orders/", views_exports.export_orders_csv, name="panel_export_orders"),
+    path("panel/exports/payments/", views_exports.export_payments_csv, name="panel_export_payments"),
 
     path("t/<uuid:token>/", views.public_status, name="public_status"),
     path("t/<uuid:token>/qr.png", views.qr, name="qr"),
