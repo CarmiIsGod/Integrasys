@@ -45,11 +45,11 @@ from .permissions import (
     ROLE_RECEPCION,
     ROLE_GERENCIA,
     ROLE_TECNICO,
+    group_required,
+    is_manager,
     is_gerencia,
     is_recepcion,
     is_tecnico,
-    is_manager,
-    roles_required,
     require_manager,
 )
 
@@ -431,7 +431,7 @@ def dashboard(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def inventory_list(request):
     q = (request.GET.get("q", "") or "").strip()
     low = request.GET.get("low") == "1"
@@ -451,7 +451,7 @@ def inventory_list(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def receive_stock(request):
     sku = (request.POST.get("sku") or "").strip()
@@ -478,7 +478,7 @@ def receive_stock(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def inventory_create(request):
     if request.method == "POST":
         form = InventoryItemForm(request.POST)
@@ -498,7 +498,7 @@ def inventory_create(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def inventory_update(request, pk):
     item = get_object_or_404(InventoryItem, pk=pk)
     if request.method == "POST":
@@ -542,7 +542,7 @@ def inventory_delete(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def list_orders(request):
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
@@ -581,38 +581,75 @@ def list_orders(request):
             qs = qs.filter(assigned_to_id=assignee)
 
     tz = timezone.get_current_timezone()
-    if dfrom:
+
+    def _make_boundary(value, *, end=False):
+        if not value:
+            return None
         try:
-            start_dt = tz.localize(datetime.strptime(dfrom, "%Y-%m-%d"))
-            qs = qs.filter(checkin_at__gte=start_dt)
+            date_value = datetime.strptime(value, "%Y-%m-%d").date()
         except ValueError:
-            pass
-    if dto:
-        try:
-            end_dt = tz.localize(datetime.strptime(dto, "%Y-%m-%d")) + timedelta(days=1)
-            qs = qs.filter(checkin_at__lt=end_dt)
-        except ValueError:
-            pass
+            return None
+        base = datetime.combine(date_value, time.min)
+        if end:
+            base += timedelta(days=1)
+        if settings.USE_TZ:
+            return timezone.make_aware(base, tz)
+        return base
+
+    start_dt = _make_boundary(dfrom)
+    if start_dt:
+        qs = qs.filter(checkin_at__gte=start_dt)
+
+    end_dt = _make_boundary(dto, end=True)
+    if end_dt:
+        qs = qs.filter(checkin_at__lt=end_dt)
+
+    base_params = [
+        ("q", q),
+        ("status", status),
+        ("assignee", assignee),
+        ("from", dfrom),
+        ("to", dto),
+    ]
+    preserved = [(key, value) for key, value in base_params if value]
+    export_query = urlencode(preserved + [("export", "1")]) if preserved else "export=1"
+    export_csv_url = f"{request.path}?{export_query}"
+
+    if export and not can_export:
+        return render(
+            request,
+            "403.html",
+            {"required_groups": [ROLE_GERENCIA]},
+            status=403,
+        )
 
     if export:
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp["Content-Disposition"] = 'attachment; filename="ordenes.csv"'
-        w = csv.writer(resp)
-        w.writerow(["Folio","Estado","Cliente","Equipo","Serie","Check-in","Check-out","Pagado","Saldo","Link p\u00fablico"])
-        for o in qs:
-            public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
-            w.writerow([
-                o.folio,
-                o.get_status_display(),
-                o.device.customer.name if o.device_id else "",
-                (o.device.brand + " " + o.device.model).strip() if o.device_id else "",
-                o.device.serial if o.device_id else "",
-                timezone.localtime(o.checkin_at).strftime("%Y-%m-%d %H:%M"),
-                timezone.localtime(o.checkout_at).strftime("%Y-%m-%d %H:%M") if o.checkout_at else "",
-                str(o.paid_total),
-                str(o.balance),
-                public_url,
-            ])
+        writer = csv.writer(resp)
+        writer.writerow(
+            ["Folio", "Cliente", "Equipo", "Estado", "Tecnico", "Total", "FechaEntrada", "FechaSalida"]
+        )
+        for order in qs:
+            device = getattr(order, "device", None)
+            customer = getattr(device, "customer", None) if device else None
+            tech_name = order.assigned_to.get_username() if order.assigned_to_id else ""
+            equipment = ""
+            if device:
+                parts = [device.brand or "", device.model or ""]
+                equipment = " ".join(part for part in parts if part).strip()
+            writer.writerow(
+                [
+                    order.folio,
+                    getattr(customer, "name", ""),
+                    equipment,
+                    order.get_status_display(),
+                    tech_name,
+                    format(order.approved_total, ".2f"),
+                    timezone.localtime(order.checkin_at).strftime("%Y-%m-%d %H:%M"),
+                    timezone.localtime(order.checkout_at).strftime("%Y-%m-%d %H:%M") if order.checkout_at else "",
+                ]
+            )
         return resp
 
     paginator = Paginator(qs, 20)
@@ -650,12 +687,13 @@ def list_orders(request):
         "can_export": can_export,
         "is_technician": is_technician,
         "is_superuser": is_superuser,
+        "export_csv_url": export_csv_url,
     }
     context["is_manager"] = is_manager(request.user)
     return render(request, "reception_orders.html", context)
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def order_detail(request, pk):
     order = get_object_or_404(
         ServiceOrder.objects.select_related("device","device__customer"),
@@ -732,7 +770,7 @@ def order_detail(request, pk):
     )
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def add_payment(request, pk):
     order = get_object_or_404(
@@ -801,7 +839,11 @@ def add_payment(request, pk):
         try:
             if new_balance == Decimal("0.00") and order.status in {ready_value, ready_pickup_value, auth_value}:
                 order.status = done_value
-                order.save(update_fields=["status"])
+                update_fields = ["status"]
+                if not order.checkout_at:
+                    order.checkout_at = timezone.now()
+                    update_fields.append("checkout_at")
+                order.save(update_fields=update_fields)
                 try:
                     StatusHistory.objects.create(order=order, status=done_value, author=request.user)
                 except Exception:
@@ -883,7 +925,7 @@ def add_payment(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def change_status_auth(request, pk):
     order = get_object_or_404(
@@ -1002,7 +1044,7 @@ def change_status_auth(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_TECNICO, ROLE_GERENCIA)
 @require_POST
 def change_status(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -1041,7 +1083,11 @@ def change_status(request, pk):
             return redirect("order_detail", pk=order.pk)
 
     order.status = target
-    order.save()
+    update_fields = ["status"]
+    if target == ServiceOrder.Status.DELIVERED and not order.checkout_at:
+        order.checkout_at = timezone.now()
+        update_fields.append("checkout_at")
+    order.save(update_fields=update_fields)
 
     StatusHistory.objects.create(order=order, status=target, author=request.user)
     _record_status_update(
@@ -1102,7 +1148,7 @@ def change_status(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def payment_receipt_pdf(request, payment_id):
     payment = get_object_or_404(
         Payment.objects.select_related("order", "author", "order__device", "order__device__customer"),
@@ -1136,7 +1182,7 @@ def payment_receipt_pdf(request, payment_id):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def assign_tech(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -1172,7 +1218,7 @@ def assign_tech(request, pk):
     return redirect("order_detail", pk=order.pk)
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def add_note(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -1194,7 +1240,7 @@ def add_note(request, pk):
     return redirect("order_detail", pk=order.pk)
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def add_part(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
@@ -1257,7 +1303,7 @@ def add_part(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def customer_devices(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     if request.method == "POST":
@@ -1282,7 +1328,7 @@ def customer_devices(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_home(request):
     return render(
         request,
@@ -1292,7 +1338,7 @@ def reception_home(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_new_order(request):
     prefill = {
         "name": "",
@@ -1418,7 +1464,7 @@ def reception_new_order(request):
     context = {"prefill": prefill}
     return render(request, "reception/new_order.html", context)
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def estimate_edit(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     estimate, _ = Estimate.objects.get_or_create(order=order)
@@ -1570,7 +1616,7 @@ def estimate_edit(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 @require_POST
 def estimate_send(request, pk):
     order = get_object_or_404(
@@ -1821,7 +1867,7 @@ def estimate_decline(request, token):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def notifications_list(request):
     notifications = Notification.objects.order_by("-created_at")[:100]
     unread_count = Notification.objects.filter(seen_at__isnull=True).count()
@@ -1833,7 +1879,7 @@ def notifications_list(request):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def notifications_mark_all_read(request):
     Notification.objects.filter(seen_at__isnull=True).update(seen_at=timezone.now())
@@ -1912,7 +1958,7 @@ def _format_bytes(total):
 
 
 @login_required(login_url="/admin/login/")
-@roles_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def order_attachments(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     existing_filenames = set(
@@ -1951,10 +1997,10 @@ def order_attachments(request, pk):
             return redirect("order_attachments", pk=order.pk)
         created = 0
         file_field = Attachment._meta.get_field("file")
+        storage = file_field.storage
         for uploaded, base_name in valid_files:
             temp_instance = Attachment(service_order=order)
             target_name = file_field.generate_filename(temp_instance, base_name)
-            storage = file_field.storage
             if storage.exists(target_name):
                 storage.delete(target_name)
             data = {"service_order": order, "file": uploaded}
