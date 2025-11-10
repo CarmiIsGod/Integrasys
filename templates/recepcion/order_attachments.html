@@ -23,6 +23,23 @@
     tbody tr:nth-child(odd){background:#f8fbff;}
     tbody tr:hover{background:#eef4ff;}
     img.preview{max-width:140px;max-height:100px;border-radius:10px;border:1px solid #e2e8f0;}
+    .dropzone{border:2px dashed #94a3b8;border-radius:16px;padding:18px;text-align:center;background:#f8fafc;cursor:pointer;transition:border-color .2s,background .2s;}
+    .dropzone strong{display:block;font-size:16px;color:#0f172a;margin-bottom:6px;}
+    .dropzone span{color:#475569;font-size:14px;}
+    .dropzone.is-dragging{border-color:#2563eb;background:#dbeafe;}
+    .dropzone input{display:none;}
+    .file-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:14px;color:#475569;}
+    .file-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+    .file-chip{background:#eff6ff;color:#1e40af;padding:6px 10px;border-radius:12px;font-size:13px;display:flex;align-items:center;gap:6px;border:1px solid #bfdbfe;}
+    .file-chip small{color:#475569;}
+    .file-chip button{background:none;border:none;color:#1e40af;font-weight:600;cursor:pointer;}
+    .modal-layer{position:fixed;inset:0;background:rgba(15,23,42,0.45);display:flex;align-items:center;justify-content:center;z-index:999;transition:opacity .2s ease;}
+    .modal-layer.hidden{opacity:0;pointer-events:none;}
+    .modal-box{background:#fff;padding:28px;border-radius:18px;max-width:420px;width:90%;box-shadow:0 20px 50px rgba(15,23,42,0.35);text-align:left;}
+    .modal-box h3{margin:0 0 12px;font-size:22px;color:#0f172a;}
+    .modal-box p{margin:0 0 18px;color:#475569;line-height:1.5;}
+    .modal-actions{display:flex;justify-content:flex-end;gap:10px;}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;}
   </style>
 </head>
 <body>
@@ -52,10 +69,19 @@
         <label>Comentario (opcional)
           <input type="text" name="caption" maxlength="255">
         </label>
-        <label>Selecciona archivos
-          <input type="file" name="file" multiple required{% if accept_attr %} accept="{{ accept_attr }}"{% endif %}>
+        <label class="dropzone" for="attachment-input">
+          <strong>Selecciona o arrastra archivos</strong>
+          <span>Hasta {{ max_size_mb }} MB por archivo. Tipos permitidos: {{ allowed_extensions }}.</span>
+          <input id="attachment-input" class="sr-only" type="file" name="file" multiple required{% if accept_attr %} accept="{{ accept_attr }}"{% endif %}>
         </label>
-        <p class="muted">Maximo {{ max_size_mb }} MB por archivo. {{ total_limit_hint }} Tipos permitidos: {{ allowed_extensions }}.</p>
+        <div class="file-controls">
+          <span>Total seleccionado: <strong id="total-size">0 MB</strong></span>
+          <button type="button" class="btn btn-ghost" id="clear-files">Limpiar selección</button>
+        </div>
+        <div id="selected-files" class="file-list" data-empty-text="Sin archivos seleccionados.">
+          <span class="muted">Sin archivos seleccionados.</span>
+        </div>
+        <p class="muted">{{ total_limit_hint }}</p>
         <button type="submit">Subir adjuntos</button>
       </form>
     </section>
@@ -93,7 +119,7 @@
                   <td>{{ att.caption|default:"—" }}</td>
                   <td>{{ att.uploaded_at|date:"Y-m-d H:i" }}</td>
                   <td>
-                    <form method="post" action="{% url 'delete_attachment' order.pk att.pk %}">
+                    <form method="post" action="{% url 'delete_attachment' order.pk att.pk %}" class="delete-form" data-file-name="{{ att.filename }}">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-ghost">Eliminar</button>
                     </form>
@@ -108,5 +134,196 @@
       {% endif %}
     </section>
   </main>
+  <div id="delete-modal-layer" class="modal-layer hidden" aria-hidden="true">
+    <div class="modal-box">
+      <h3>Eliminar adjunto</h3>
+      <p id="delete-modal-text">Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-modal-cancel="1">Cancelar</button>
+        <button type="button" class="btn" data-modal-confirm="1">Eliminar</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function(){
+      const fileInput = document.getElementById("attachment-input");
+      const preview = document.getElementById("selected-files");
+      const clearBtn = document.getElementById("clear-files");
+      const totalEl = document.getElementById("total-size");
+      const dropzone = document.querySelector(".dropzone");
+      const emptyText = preview ? (preview.dataset.emptyText || "Sin archivos seleccionados.") : "Sin archivos seleccionados.";
+
+      function formatBytes(bytes){
+        if (!bytes) return "0 B";
+        const units = ["B","KB","MB","GB","TB"];
+        let size = bytes;
+        let idx = 0;
+        while (size >= 1024 && idx < units.length - 1){
+          size /= 1024;
+          idx += 1;
+        }
+        return idx === 0 ? `${Math.round(size)} ${units[idx]}` : `${size.toFixed(1)} ${units[idx]}`;
+      }
+
+      function render(files){
+        if (!preview) return;
+        preview.innerHTML = "";
+        if (!files.length){
+          const placeholder = document.createElement("span");
+          placeholder.className = "muted";
+          placeholder.textContent = emptyText;
+          preview.appendChild(placeholder);
+          if (totalEl) totalEl.textContent = "0 MB";
+          return;
+        }
+        let total = 0;
+        files.forEach((file, index) => {
+          const chip = document.createElement("span");
+          chip.className = "file-chip";
+          const nameEl = document.createElement("span");
+          nameEl.textContent = file.name;
+          const sizeEl = document.createElement("small");
+          const size = file.size || 0;
+          sizeEl.textContent = formatBytes(size);
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.setAttribute("aria-label", `Quitar ${file.name}`);
+          removeBtn.textContent = "×";
+          removeBtn.addEventListener("click", function(){
+            removeFile(index);
+          });
+          chip.appendChild(nameEl);
+          chip.appendChild(sizeEl);
+          chip.appendChild(removeBtn);
+          preview.appendChild(chip);
+          total += size;
+        });
+        if (totalEl) totalEl.textContent = formatBytes(total);
+      }
+
+      function removeFile(index){
+        if (!fileInput) return;
+        if (!window.DataTransfer){
+          fileInput.value = "";
+          render([]);
+          return;
+        }
+        const dt = new DataTransfer();
+        Array.from(fileInput.files || []).forEach((file, idx) => {
+          if (idx !== index){
+            dt.items.add(file);
+          }
+        });
+        fileInput.files = dt.files;
+        render(Array.from(dt.files));
+      }
+
+      if (fileInput){
+        fileInput.addEventListener("change", function(){
+          render(Array.from(fileInput.files || []));
+        });
+      }
+
+      if (clearBtn){
+        clearBtn.addEventListener("click", function(){
+          if (!fileInput) return;
+          fileInput.value = "";
+          render([]);
+        });
+      }
+
+      if (dropzone && fileInput){
+        ["dragenter","dragover"].forEach(function(evt){
+          dropzone.addEventListener(evt, function(event){
+            event.preventDefault();
+            dropzone.classList.add("is-dragging");
+          });
+        });
+        ["dragleave","drop"].forEach(function(evt){
+          dropzone.addEventListener(evt, function(event){
+            event.preventDefault();
+            dropzone.classList.remove("is-dragging");
+          });
+        });
+        dropzone.addEventListener("drop", function(event){
+          event.preventDefault();
+          const incoming = event.dataTransfer ? event.dataTransfer.files : null;
+          if (!incoming || !incoming.length) return;
+          if (window.DataTransfer){
+            const dt = new DataTransfer();
+            Array.from(fileInput.files || []).forEach(function(file){
+              dt.items.add(file);
+            });
+            Array.from(incoming).forEach(function(file){
+              dt.items.add(file);
+            });
+            fileInput.files = dt.files;
+          } else {
+            fileInput.files = incoming;
+          }
+          fileInput.dispatchEvent(new Event("change"));
+        });
+      }
+
+      render([]);
+
+      const modalLayer = document.getElementById("delete-modal-layer");
+      const modalText = document.getElementById("delete-modal-text");
+      const confirmBtn = document.querySelector("[data-modal-confirm]");
+      const cancelBtn = document.querySelector("[data-modal-cancel]");
+      let pendingForm = null;
+
+      function openModal(form){
+        pendingForm = form;
+        if (modalText){
+          const label = form?.dataset?.fileName || "este adjunto";
+          modalText.textContent = `¿Seguro que deseas eliminar ${label}? Esta acción no se puede deshacer.`;
+        }
+        if (modalLayer){
+          modalLayer.classList.remove("hidden");
+          modalLayer.setAttribute("aria-hidden", "false");
+        }
+      }
+
+      function closeModal(){
+        pendingForm = null;
+        if (modalLayer){
+          modalLayer.classList.add("hidden");
+          modalLayer.setAttribute("aria-hidden", "true");
+        }
+      }
+
+      document.querySelectorAll(".delete-form").forEach(function(form){
+        form.addEventListener("submit", function(event){
+          event.preventDefault();
+          openModal(form);
+        });
+      });
+
+      if (confirmBtn){
+        confirmBtn.addEventListener("click", function(){
+          if (pendingForm){
+            const formToSubmit = pendingForm;
+            closeModal();
+            formToSubmit.submit();
+          } else {
+            closeModal();
+          }
+        });
+      }
+
+      if (cancelBtn){
+        cancelBtn.addEventListener("click", closeModal);
+      }
+
+      if (modalLayer){
+        modalLayer.addEventListener("click", function(event){
+          if (event.target === modalLayer){
+            closeModal();
+          }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

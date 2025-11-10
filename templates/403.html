@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>403 | Acceso restringido</title>
+  <style>
+    :root {
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+    body {
+      margin: 0;
+      padding: 48px 24px;
+      display: flex;
+      justify-content: center;
+    }
+    main {
+      max-width: 520px;
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 10px 35px rgba(15, 23, 42, 0.1);
+      border: 1px solid #e2e8f0;
+      text-align: center;
+    }
+    h1 {
+      margin: 0 0 16px;
+      font-size: 28px;
+      color: #1d4ed8;
+    }
+    p {
+      margin: 0 0 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .groups {
+      font-weight: 600;
+      color: #0f172a;
+    }
+    a.btn {
+      display: inline-block;
+      margin-top: 18px;
+      padding: 10px 22px;
+      background: #1d4ed8;
+      color: #fff;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>403 · Acceso restringido</h1>
+    <p>No cuentas con los permisos necesarios para ver esta página.</p>
+    {% if required_groups %}
+      <p>Debes pertenecer al menos a uno de los siguientes grupos:</p>
+      <p class="groups">{{ required_groups|join:", " }}</p>
+    {% endif %}
+    <p>Si crees que esto es un error, contacta al administrador.</p>
+    <a class="btn" href="/admin/login/">Ir al login</a>
+  </main>
+</body>
+</html>

@@ -67,8 +67,8 @@
         <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;">
           <button type="submit">Aplicar filtros</button>
           <a href="{% url 'list_orders' %}" class="btn btn-ghost">Limpiar</a>
-          {% if is_manager %}
-          <a href="{% url 'panel_exports' %}" class="btn btn-ghost">Exportar CSV</a>
+          {% if can_export %}
+          <a href="{{ export_csv_url }}" class="btn btn-ghost">Exportar CSV</a>
           {% endif %}
         </div>
       </form>
