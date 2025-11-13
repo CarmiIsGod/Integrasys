@@ -1,7 +1,6 @@
 ﻿from django.contrib import admin
 from django.utils.html import format_html
-from django.core.mail import send_mail
-from django.conf import settings
+from django.urls import reverse
 
 import csv
 from django.http import HttpResponse
@@ -11,6 +10,7 @@ from .models import (
     Customer, Device, ServiceOrder, StatusHistory,
     InventoryItem, InventoryMovement, Notification
 )
+from .utils import build_device_label, log_status_snapshot, send_order_status_email
 
 admin.site.site_header = "Integrasys - Administración"
 admin.site.site_title  = "Integrasys Admin"
@@ -33,7 +33,8 @@ class DeviceAdmin(admin.ModelAdmin):
 class StatusHistoryInline(admin.TabularInline):
     model = StatusHistory
     extra = 0
-    readonly_fields = ("status", "author", "created_at")
+    fields = ("from_status", "status", "author", "author_role", "created_at")
+    readonly_fields = ("from_status", "status", "author", "author_role", "created_at")
 
 
 def export_orders_csv(modeladmin, request, queryset):
@@ -105,40 +106,45 @@ class ServiceOrderAdmin(admin.ModelAdmin):
 
         # Guarda historial si es nueva o si cambió el estado
         if not change or (old_status != obj.status):
-            StatusHistory.objects.create(order=obj, status=obj.status, author=request.user)
+            log_status_snapshot(
+                obj,
+                author=request.user,
+                previous_status=old_status or "",
+                new_status=obj.status,
+            )
 
-            # Notificaciones SOLO para 2 estados clave
             if obj.status in (
                 ServiceOrder.Status.READY_PICKUP,
                 ServiceOrder.Status.REQUIRES_AUTH,
             ):
-                customer = obj.device.customer
-                if customer.email:
-                    if obj.status == ServiceOrder.Status.READY_PICKUP:
-                        subject = f"Tu equipo está listo para recoger — Folio {obj.folio}"
-                        body = (
-                            f"Hola {customer.name},\n\n"
-                            f"Tu equipo está LISTO PARA RECOGER.\n"
-                            f"Folio: {obj.folio}\n"
-                            f"Consulta el estado: http://127.0.0.1:8000/t/{obj.token}/\n"
-                        )
-                        kind = "ready"
-                    else:
-                        subject = f"Requiere autorización de repuestos — Folio {obj.folio}"
-                        body = (
-                            f"Hola {customer.name},\n\n"
-                            f"Tu orden REQUIERE AUTORIZACIÓN DE REPUESTOS.\n"
-                            f"Folio: {obj.folio}\n"
-                            f"Revisa detalles: http://127.0.0.1:8000/t/{obj.token}/\n"
-                        )
-                        kind = "requires_auth"
-
-                    try:
-                        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [customer.email], fail_silently=False)
-                        Notification.objects.create(order=obj, kind=kind, channel="email", ok=True)
-                    except Exception as e:
-                        Notification.objects.create(order=obj, kind=kind, channel="email", ok=False, payload={"error": str(e)})
-
+                public_url = request.build_absolute_uri(reverse("public_status", args=[obj.token]))
+                device_label = build_device_label(obj)
+                extra_context = {}
+                if obj.status == ServiceOrder.Status.REQUIRES_AUTH and hasattr(obj, "estimate"):
+                    estimate = obj.estimate
+                    extra_context["estimate_url"] = request.build_absolute_uri(
+                        reverse("estimate_public", args=[estimate.token])
+                    )
+                    extra_context["has_items"] = estimate.items.exists()
+                notification = Notification.objects.create(
+                    order=obj,
+                    kind="email",
+                    channel="admin_status",
+                    payload={
+                        "order_folio": obj.folio,
+                        "order": obj.folio,
+                        "customer": getattr(getattr(obj.device, "customer", None), "name", ""),
+                        "device": device_label,
+                    },
+                )
+                send_order_status_email(
+                    order=obj,
+                    notification=notification,
+                    status_code=obj.status,
+                    public_url=public_url,
+                    device_label=device_label,
+                    extra_context=extra_context,
+                )
 admin.site.register([InventoryItem, InventoryMovement, Notification])
 
 from core.models import Attachment

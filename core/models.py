@@ -76,6 +76,15 @@ class ServiceOrder(models.Model):
         READY_PICKUP = "READY", "Listo para recoger"
         DELIVERED = "DONE", "Entregado"
 
+    STATUS_TRANSITIONS = {
+        Status.NEW: (Status.IN_REVIEW,),
+        Status.IN_REVIEW: (Status.WAITING_PARTS, Status.REQUIRES_AUTH, Status.READY_PICKUP),
+        Status.WAITING_PARTS: (Status.IN_REVIEW, Status.READY_PICKUP),
+        Status.REQUIRES_AUTH: (Status.IN_REVIEW, Status.READY_PICKUP),
+        Status.READY_PICKUP: (Status.DELIVERED,),
+        Status.DELIVERED: (),
+    }
+
     device = models.ForeignKey(Device, on_delete=models.CASCADE, db_index=True)
     folio = models.CharField(max_length=20, unique=True, blank=True, editable=False)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -130,6 +139,38 @@ class ServiceOrder(models.Model):
         if last_error:
             raise last_error
 
+    @classmethod
+    def allowed_transitions(cls):
+        return cls.STATUS_TRANSITIONS
+
+    def allowed_next_statuses(self):
+        return list(self.STATUS_TRANSITIONS.get(self.status, ()))
+
+    def can_transition_to(self, new_status):
+        return new_status in self.allowed_next_statuses()
+
+    def transition_to(self, new_status, *, author=None, author_role="", force=False):
+        previous_status = self.status
+        if not force and previous_status == new_status:
+            return previous_status
+        if not force and new_status not in self.allowed_next_statuses():
+            raise ValueError(f"Transicion no permitida de {previous_status} a {new_status}")
+        update_fields = ["status"]
+        self.status = new_status
+        if new_status == ServiceOrder.Status.DELIVERED and not self.checkout_at:
+            self.checkout_at = timezone.now()
+            update_fields.append("checkout_at")
+        self.save(update_fields=update_fields)
+        from_status_value = previous_status or ""
+        StatusHistory.log(
+            order=self,
+            from_status=from_status_value,
+            to_status=new_status,
+            author=author,
+            author_role=author_role or "",
+        )
+        return previous_status
+
 
     @staticmethod
     def _quantize_amount(value):
@@ -180,9 +221,22 @@ class ServiceOrder(models.Model):
 
 class StatusHistory(models.Model):
     order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="history", db_index=True)
+    from_status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices, blank=True, default="")
     status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices, db_index=True)
     author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
+    author_role = models.CharField(max_length=20, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    @classmethod
+    def log(cls, order, *, from_status="", to_status=None, author=None, author_role=""):
+        target_status = to_status or getattr(order, "status", "")
+        return cls.objects.create(
+            order=order,
+            from_status=from_status or "",
+            status=target_status,
+            author=author,
+            author_role=author_role or "",
+        )
 
 
 class Payment(models.Model):
@@ -232,6 +286,7 @@ class Estimate(models.Model):
     tax = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     apply_tax = models.BooleanField(default=True)
+    inventory_applied = models.BooleanField(default=False)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     def __str__(self):

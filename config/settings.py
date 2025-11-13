@@ -1,6 +1,7 @@
 ﻿# config/settings.py
 from pathlib import Path
 import os
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -12,13 +13,33 @@ except Exception:
     pass
 
 # --- Core flags (defaults amigables para local/CI) ---
-SECRET_KEY = os.getenv("SECRET_KEY", "ci-dev-not-secure")
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
-ALLOWED_HOSTS = [h for h in os.getenv("ALLOWED_HOSTS", "*").split(",") if h]
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    if "test" in sys.argv:
+        SECRET_KEY = "test-secret"
+    else:
+        raise RuntimeError("SECRET_KEY no configurada; define SECRET_KEY en el entorno.")
+
+debug_env = os.getenv("DJANGO_DEBUG", os.getenv("DEBUG", "0"))
+DEBUG = str(debug_env).lower() in ("true", "1", "yes")
+
+default_hosts = os.getenv("ALLOWED_HOSTS", "")
+if default_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in default_hosts.split(",") if h.strip()]
+else:
+    ALLOWED_HOSTS = ["app.integrasyscomputacion.com.mx"]
+if DEBUG:
+    for host in ("127.0.0.1", "localhost"):
+        if host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host)
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "20"))
 
 # CSRF comunes; puedes ampliar por env
-CSRF_TRUSTED_ORIGINS = ["https://*.github.dev", "https://*.onrender.com"]
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.github.dev",
+    "https://*.onrender.com",
+    "https://app.integrasyscomputacion.com.mx",
+]
 EXTRA_CSRF = os.getenv("CSRF_TRUSTED_ORIGINS_EXTRA", "")
 if EXTRA_CSRF:
     CSRF_TRUSTED_ORIGINS += [o.strip() for o in EXTRA_CSRF.split(",") if o.strip()]
@@ -105,9 +126,12 @@ STORAGES = {
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 SECURE_HSTS_PRELOAD = False
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+X_FRAME_OPTIONS = "DENY"
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
@@ -118,6 +142,14 @@ if not DEBUG:
         SECURE_HSTS_PRELOAD = True
 else:
     SECURE_HSTS_SECONDS = 0
+
+if "test" in sys.argv:
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
 
 # --- i18n / TZ ---
 LANGUAGE_CODE = "es-mx"

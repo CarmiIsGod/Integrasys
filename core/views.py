@@ -1,4 +1,4 @@
-﻿from django.http import HttpResponse, Http404
+from django.http import HttpResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
@@ -52,16 +52,14 @@ from .permissions import (
     is_tecnico,
     require_manager,
 )
+from .utils import (
+    apply_estimate_inventory,
+    build_device_label,
+    resolve_actor_role,
+    log_status_snapshot,
+    send_order_status_email,
+)
 
-
-ALLOWED = {
-    "NEW": ["REV"],
-    "REV": ["WAI", "AUTH", "READY"],
-    "WAI": ["REV", "READY"],
-    "AUTH": ["REV", "READY"],
-    "READY": ["DONE"],
-    "DONE": [],
-}
 
 
 IVA_RATE = Decimal("0.16")
@@ -122,30 +120,6 @@ def _resolve_order_folio(order):
     return "SR-0000"
 
 
-def _build_device_label(order):
-    device = getattr(order, "device", None)
-    if not device:
-        return "Equipo"
-    parts = []
-    for attr in ("brand", "model"):
-        value = getattr(device, attr, "")
-        if value:
-            parts.append(value)
-    serial = getattr(device, "serial", "")
-    if serial:
-        if parts:
-            parts.append(f"({serial})")
-        else:
-            parts.append(serial)
-    label = " ".join(parts).strip()
-    if label:
-        return label
-    try:
-        return str(device)
-    except Exception:
-        return "Equipo"
-
-
 def _record_status_update(order, *, channel="status_change", ok=True, extra_payload=None, title=None):
     try:
         device = getattr(order, "device", None)
@@ -156,7 +130,7 @@ def _record_status_update(order, *, channel="status_change", ok=True, extra_payl
             "order_folio": _resolve_order_folio(order),
             "order": _resolve_order_folio(order),
             "customer": customer_name,
-            "device": _build_device_label(order),
+            "device": build_device_label(order),
             "status": getattr(order, "status", ""),
             "status_display": order.get_status_display() if hasattr(order, "get_status_display") else getattr(order, "status", ""),
         }
@@ -172,6 +146,93 @@ def _record_status_update(order, *, channel="status_change", ok=True, extra_payl
         )
     except Exception:
         logger.exception("Error registrando notificacion de estado")
+
+
+def _find_customer_match(*, name, phone, email):
+    """Return the first customer that matches by email or phone."""
+    qs = Customer.objects.all()
+    lookups = []
+    if email:
+        lookups.append({"email__iexact": email})
+    if phone:
+        lookups.append({"phone__iexact": phone})
+    if name and phone:
+        lookups.append({"name__iexact": name, "phone__iexact": phone})
+    if name and email:
+        lookups.append({"name__iexact": name, "email__iexact": email})
+    for lookup in lookups:
+        match = qs.filter(**lookup).order_by("id").first()
+        if match:
+            return match
+    return None
+
+
+def _ensure_customer(name, phone, email):
+    customer = _find_customer_match(name=name, phone=phone, email=email)
+    if customer:
+        fields = []
+        if name and not customer.name:
+            customer.name = name
+            fields.append("name")
+        if phone and not customer.phone:
+            customer.phone = phone
+            fields.append("phone")
+        if email and not customer.email:
+            customer.email = email
+            fields.append("email")
+        if fields:
+            customer.save(update_fields=fields)
+        return customer
+    return Customer.objects.create(name=name, phone=phone or "", email=email or "")
+
+
+def _ensure_device(customer, *, brand, model, serial, notes):
+    serial_norm = (serial or "").strip().upper()
+    device = None
+    if serial_norm:
+        device = (
+            Device.objects.filter(customer=customer, serial__iexact=serial_norm)
+            .order_by("id")
+            .first()
+        )
+    if device is None:
+        device = (
+            Device.objects.filter(
+                customer=customer,
+                serial="",
+                brand__iexact=brand,
+                model__iexact=model,
+            )
+            .order_by("id")
+            .first()
+        )
+    if device is None:
+        return Device.objects.create(
+            customer=customer,
+            brand=brand,
+            model=model,
+            serial=serial_norm,
+            notes=notes,
+        )
+
+    updates = []
+    if serial_norm:
+        current_serial = (device.serial or "").strip()
+        if not current_serial or current_serial.upper() != serial_norm:
+            device.serial = serial_norm
+            updates.append("serial")
+    if brand and not device.brand:
+        device.brand = brand
+        updates.append("brand")
+    if model and not device.model:
+        device.model = model
+        updates.append("model")
+    if notes and not device.notes:
+        device.notes = notes
+        updates.append("notes")
+    if updates:
+        device.save(update_fields=updates)
+    return device
 
 
 def build_whatsapp_link(phone: str, text: str) -> str:
@@ -190,7 +251,7 @@ def public_status(request, token):
         ).get(token=token)
     except ServiceOrder.DoesNotExist:
         raise Http404("Orden no encontrada")
-    history = order.history.order_by("-created_at")
+    history = order.history.order_by("created_at")
     return render(request, "public_status.html", {"order": order, "history": history})
 
 
@@ -657,7 +718,7 @@ def list_orders(request):
 
     restricted_statuses = {"REV", "WAI", "READY"}
     for o in page_obj.object_list:
-        allowed_next = ALLOWED.get(o.status, [])
+        allowed_next = o.allowed_next_statuses()
         if is_technician:
             allowed_next = [code for code in allowed_next if code in restricted_statuses]
         o.allowed_next = allowed_next
@@ -678,7 +739,6 @@ def list_orders(request):
         "dfrom": dfrom,
         "dto": dto,
         "status_choices": ServiceOrder.Status.choices,
-        "ALLOWED": ALLOWED,
         "assignee": assignee,
         "staff_users": User.objects.filter(is_staff=True).order_by("username"),
         "can_create": can_create,
@@ -701,7 +761,7 @@ def order_detail(request, pk):
     )
     history = order.history.order_by("-created_at")
     parts = InventoryMovement.objects.filter(order=order).select_related("item").order_by("-created_at")
-    allowed_next = ALLOWED.get(order.status, [])
+    allowed_next = order.allowed_next_statuses()
 
     is_superuser = request.user.is_superuser
     is_technician = is_tecnico(request.user)
@@ -832,22 +892,11 @@ def add_payment(request, pk):
         balance_display = format(new_balance, ".2f")
 
         Status = ServiceOrder.Status
-        ready_value = getattr(Status, "READY", getattr(Status, "READY_PICKUP", "READY"))
-        ready_pickup_value = getattr(Status, "READY_PICKUP", ready_value)
-        auth_value = getattr(Status, "AUTH", getattr(Status, "REQUIRES_AUTH", "AUTH"))
-        done_value = getattr(Status, "DONE", getattr(Status, "DELIVERED", "DONE"))
+        done_value = Status.DELIVERED
         try:
-            if new_balance == Decimal("0.00") and order.status in {ready_value, ready_pickup_value, auth_value}:
-                order.status = done_value
-                update_fields = ["status"]
-                if not order.checkout_at:
-                    order.checkout_at = timezone.now()
-                    update_fields.append("checkout_at")
-                order.save(update_fields=update_fields)
-                try:
-                    StatusHistory.objects.create(order=order, status=done_value, author=request.user)
-                except Exception:
-                    logger.exception("No se pudo guardar historial de cierre de orden")
+            if new_balance == Decimal("0.00") and order.can_transition_to(done_value):
+                actor_role = resolve_actor_role(request.user)
+                order.transition_to(done_value, author=request.user, author_role=actor_role)
                 _record_status_update(
                     order,
                     channel="status_auto_close",
@@ -856,7 +905,7 @@ def add_payment(request, pk):
         except Exception:
             logger.exception("No se pudo cerrar la orden tras dejar saldo en cero")
 
-        device_label = _build_device_label(order)
+        device_label = build_device_label(order)
         folio = _resolve_order_folio(order)
         customer = getattr(order.device, "customer", None)
         customer_name = getattr(customer, "name", "") if customer else ""
@@ -933,8 +982,8 @@ def change_status_auth(request, pk):
         pk=pk,
     )
 
-    allowed_next = ALLOWED.get(order.status, [])
-    if ServiceOrder.Status.REQUIRES_AUTH not in allowed_next:
+    target_status = ServiceOrder.Status.REQUIRES_AUTH
+    if not order.can_transition_to(target_status):
         messages.error(request, "Transicion de estado invalida.")
         return redirect("order_detail", pk=order.pk)
 
@@ -942,17 +991,20 @@ def change_status_auth(request, pk):
         messages.error(request, "No tienes permiso para solicitar autorizacion.")
         return redirect("order_detail", pk=order.pk)
 
-    device_label = _build_device_label(order)
+    device_label = build_device_label(order)
     customer = getattr(order.device, "customer", None)
     customer_name = getattr(customer, "name", "") if customer else ""
     order_folio = _resolve_order_folio(order)
 
     estimate, _ = Estimate.objects.get_or_create(order=order)
 
-    order.status = ServiceOrder.Status.REQUIRES_AUTH
-    order.save(update_fields=["status"])
+    actor_role = resolve_actor_role(request.user)
+    try:
+        order.transition_to(target_status, author=request.user, author_role=actor_role)
+    except ValueError:
+        messages.error(request, "Transicion de estado invalida.")
+        return redirect("order_detail", pk=order.pk)
 
-    StatusHistory.objects.create(order=order, status=ServiceOrder.Status.REQUIRES_AUTH, author=request.user)
     _record_status_update(
         order,
         channel="status_requires_authorization",
@@ -962,83 +1014,43 @@ def change_status_auth(request, pk):
         },
     )
 
-    email = (order.device.customer.email or "").strip()
-    payload = {}
-    send_ok = False
-    error_message = None
-
-    if email:
-        public_status_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
-        public_estimate_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
-        has_items = estimate.items.exists()
-        payload = {
-            "to": email,
-            "public_status": public_status_url,
-            "public_estimate": public_estimate_url,
-            "has_items": has_items,
-            "order_folio": order_folio,
-            "order": order_folio,
-            "customer": customer_name,
-            "device": device_label,
-            "status": order.status,
-        }
-        subject = f"Orden {order.folio} requiere autorizacion"
-        body_lines = [
-            f"Hola {order.device.customer.name},",
-            "",
-            f"Tu orden {order.folio} requiere autorizacion para continuar con el servicio.",
-        ]
-        if has_items:
-            body_lines.append(f"Revisa y autoriza la cotizacion en: {public_estimate_url}")
-        else:
-            body_lines.append("Actualizaremos la cotizacion en breve. Mientras tanto, consulta el estado aqui:")
-            body_lines.append(public_status_url)
-        body_lines.append("")
-        body_lines.append("Si tienes dudas, contactanos.")
-        message = "\n".join(body_lines)
-        try:
-            send_count = send_mail(
-                subject=subject,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False,
-            )
-            send_ok = send_count > 0
-        except Exception as exc:
-            error_message = str(exc)
-    else:
-        payload = {
-            "error": "missing_email",
-            "order_folio": order_folio,
-            "order": order_folio,
-            "customer": customer_name,
-            "device": device_label,
-            "status": order.status,
-        }
-        messages.warning(request, "El cliente no tiene correo registrado; agrega uno para notificar.")
-
-    if error_message:
-        payload["error"] = error_message
-
-    Notification.objects.create(
+    public_status_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+    public_estimate_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+    has_items = estimate.items.exists()
+    notification = Notification.objects.create(
         order=order,
         kind="email",
         channel="status_auth",
-        ok=send_ok,
-        payload=payload,
+        payload={
+            "order_folio": order_folio,
+            "order": order_folio,
+            "customer": customer_name,
+            "device": device_label,
+        },
+    )
+
+    send_ok, error_code = send_order_status_email(
+        order=order,
+        notification=notification,
+        status_code=ServiceOrder.Status.REQUIRES_AUTH,
+        public_url=public_status_url,
+        device_label=device_label,
+        extra_context={
+            "estimate_url": public_estimate_url,
+            "has_items": has_items,
+        },
     )
 
     if send_ok:
         messages.success(request, "Orden marcada como Requiere autorizacion y se notifico al cliente.")
     else:
-        if email:
+        if error_code == "missing_email":
+            messages.warning(request, "Orden marcada como Requiere autorizacion. Agrega correo para notificar al cliente.")
+        else:
             messages.warning(
                 request,
                 "Orden marcada como Requiere autorizacion, pero ocurrio un error al enviar el correo.",
             )
-        else:
-            messages.info(request, "Orden marcada como Requiere autorizacion sin notificacion por email.")
 
     return redirect("estimate_edit", pk=order.pk)
 
@@ -1049,14 +1061,12 @@ def change_status_auth(request, pk):
 def change_status(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     target = request.POST.get("target")
-    allowed = ALLOWED.get(order.status, [])
-
-    device_label = _build_device_label(order)
+    device_label = build_device_label(order)
     customer = getattr(order.device, "customer", None)
     customer_name = getattr(customer, "name", "") if customer else ""
     order_folio = _resolve_order_folio(order)
 
-    if target not in allowed:
+    if not order.can_transition_to(target):
         messages.error(request, "Transicion de estado invalida.")
         return redirect("list_orders")
 
@@ -1082,14 +1092,21 @@ def change_status(request, pk):
             messages.error(request, "No puedes entregar con saldo pendiente.")
             return redirect("order_detail", pk=order.pk)
 
-    order.status = target
-    update_fields = ["status"]
-    if target == ServiceOrder.Status.DELIVERED and not order.checkout_at:
-        order.checkout_at = timezone.now()
-        update_fields.append("checkout_at")
-    order.save(update_fields=update_fields)
+    if target == ServiceOrder.Status.READY_PICKUP:
+        applied_ok, apply_error = apply_estimate_inventory(order, author=request.user)
+        if not applied_ok:
+            messages.error(
+                request,
+                apply_error or "No se pudo aplicar el inventario de la cotizacion.",
+            )
+            return redirect("order_detail", pk=order.pk)
 
-    StatusHistory.objects.create(order=order, status=target, author=request.user)
+    actor_role = resolve_actor_role(request.user)
+    try:
+        order.transition_to(target, author=request.user, author_role=actor_role)
+    except ValueError:
+        messages.error(request, "Transicion de estado invalida.")
+        return redirect("list_orders")
     _record_status_update(
         order,
         channel="status_change",
@@ -1099,49 +1116,31 @@ def change_status(request, pk):
         },
     )
 
-    cust_email = (order.device.customer.email or "").strip()
-    if cust_email and target in ("READY", "DONE"):
+    if target in (ServiceOrder.Status.READY_PICKUP, ServiceOrder.Status.DELIVERED):
         public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
-        subject = f"Orden {order.folio} - " + ("Listo para recoger" if target == "READY" else "Entregado")
-        body = (
-            f"Hola {order.device.customer.name},\n\n"
-            f"Tu equipo: {order.device.brand} {order.device.model} ({order.device.serial})\n"
-            f"Estatus: {order.get_status_display()}\n\n"
-            f"Consulta el detalle aqui: {public_url}\n\n"
-            f"Gracias.\n"
+        notification = Notification.objects.create(
+            order=order,
+            kind="email",
+            channel="status_ready" if target == ServiceOrder.Status.READY_PICKUP else "status_done",
+            payload={
+                "order_folio": order_folio,
+                "order": order_folio,
+                "customer": customer_name,
+                "device": device_label,
+            },
         )
-        try:
-            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [cust_email], fail_silently=False)
-            Notification.objects.create(
-                order=order,
-                kind="email",
-                channel="status",
-                ok=True,
-                payload={
-                    "to": cust_email,
-                    "target": target,
-                    "order": order_folio,
-                    "order_folio": order_folio,
-                    "customer": customer_name,
-                    "device": device_label,
-                },
-            )
-        except Exception as exc:
-            Notification.objects.create(
-                order=order,
-                kind="email",
-                channel="status",
-                ok=False,
-                payload={
-                    "to": cust_email,
-                    "target": target,
-                    "order": order_folio,
-                    "error": str(exc),
-                    "order_folio": order_folio,
-                    "customer": customer_name,
-                    "device": device_label,
-                },
-            )
+        send_ok, error_code = send_order_status_email(
+            order=order,
+            notification=notification,
+            status_code=target,
+            public_url=public_url,
+            device_label=device_label,
+        )
+        if not send_ok:
+            if error_code == "missing_email":
+                messages.info(request, "No se envi\u00f3 correo porque el cliente no tiene email registrado.")
+            else:
+                messages.warning(request, "Se actualizo el estado, pero fallo el envio de correo al cliente.")
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
     return redirect("list_orders")
@@ -1340,15 +1339,8 @@ def reception_home(request):
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_new_order(request):
-    prefill = {
-        "name": "",
-        "phone": "",
-        "email": "",
-        "brand": "",
-        "model": "",
-        "serial": "",
-        "notes": "",
-    }
+    prefill = {"name": "", "phone": "", "email": "", "brand": "", "model": "", "serial": "", "notes": ""}
+    form = ReceptionForm()
     if request.method == "POST":
         data = request.POST.copy()
         if "name" in data and "customer_name" not in data:
@@ -1361,63 +1353,35 @@ def reception_new_order(request):
             data["notes"] = data.get("notes", "")
         form = ReceptionForm(data)
         if form.is_valid():
-            name = form.cleaned_data["customer_name"].strip()
-            phone = (form.cleaned_data.get("customer_phone") or "").strip()
-            email = (form.cleaned_data.get("customer_email") or "").strip()
-            brand = (form.cleaned_data.get("brand") or "").strip()
-            model = (form.cleaned_data.get("model") or "").strip()
-            serial = (form.cleaned_data.get("serial") or "").strip()
-            notes = (form.cleaned_data.get("notes") or "").strip()
+            cleaned = form.cleaned_data
+            name = cleaned["customer_name"]
+            phone = cleaned.get("customer_phone") or ""
+            email = cleaned.get("customer_email") or ""
+            brand = cleaned.get("brand") or ""
+            model = cleaned.get("model") or ""
+            serial = cleaned.get("serial") or ""
+            notes = cleaned.get("notes") or ""
 
-            customer = None
-            if email:
-                customer = Customer.objects.filter(email=email).first()
-            if customer is None and phone:
-                customer = Customer.objects.filter(phone=phone).first()
-            if customer is None:
-                customer = Customer.objects.create(
-                    name=name,
-                    phone=phone or "",
-                    email=email or "",
+            with transaction.atomic():
+                customer = _ensure_customer(name, phone, email)
+                device = _ensure_device(
+                    customer,
+                    brand=brand,
+                    model=model,
+                    serial=serial,
+                    notes=notes,
                 )
-            else:
-                updated = False
-                if not customer.name and name:
-                    customer.name = name
-                    updated = True
-                if not customer.phone and phone:
-                    customer.phone = phone
-                    updated = True
-                if not customer.email and email:
-                    customer.email = email
-                    updated = True
-                if updated:
-                    customer.save()
-
-            device, _ = Device.objects.get_or_create(
-                customer=customer,
-                serial=serial or "",
-                defaults={"brand": brand, "model": model, "notes": notes},
-            )
-            changed = False
-            if not device.brand and brand:
-                device.brand = brand
-                changed = True
-            if not device.model and model:
-                device.model = model
-                changed = True
-            if notes and not device.notes:
-                device.notes = notes
-                changed = True
-            if changed:
-                device.save()
-
-            order = ServiceOrder.objects.create(
-                device=device,
-                notes=notes,
-                assigned_to=request.user if request.user.is_authenticated else None,
-            )
-            StatusHistory.objects.create(order=order, status=order.status, author=request.user)
+                order = ServiceOrder.objects.create(
+                    device=device,
+                    notes=notes,
+                    assigned_to=request.user if request.user.is_authenticated else None,
+                )
+                log_status_snapshot(
+                    order,
+                    author=request.user,
+                    previous_status="",
+                    new_status=order.status,
+                )
 
             if email:
                 public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
@@ -1461,7 +1425,7 @@ def reception_new_order(request):
             for error in errors:
                 messages.error(request, error)
 
-    context = {"prefill": prefill}
+    context = {"prefill": prefill, "form": form}
     return render(request, "reception/new_order.html", context)
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
@@ -1764,9 +1728,8 @@ def estimate_approve(request, token):
         estimate.approved_at = now
         estimate.declined_at = None
         estimate.save(update_fields=["approved_at", "declined_at"])
-        order.status = ServiceOrder.Status.WAITING_PARTS
-        order.save(update_fields=["status"])
-        StatusHistory.objects.create(order=order, status=order.status, author=None)
+        actor_role = resolve_actor_role(None)
+        order.transition_to(ServiceOrder.Status.WAITING_PARTS, author=None, author_role=actor_role)
 
     customer_email = (order.device.customer.email or "").strip()
     total_value = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
@@ -1796,7 +1759,7 @@ def estimate_approve(request, token):
             "order": _resolve_order_folio(order),
             "folio": order.folio,
             "customer": order.device.customer.name,
-            "device": _build_device_label(order),
+            "device": build_device_label(order),
             "total": total_display,
             "approved_at": timezone.localtime(now).isoformat(),
         },
@@ -1825,9 +1788,8 @@ def estimate_decline(request, token):
         estimate.declined_at = now
         estimate.approved_at = None
         estimate.save(update_fields=["approved_at", "declined_at"])
-        order.status = ServiceOrder.Status.IN_REVIEW
-        order.save(update_fields=["status"])
-        StatusHistory.objects.create(order=order, status=order.status, author=None)
+        actor_role = resolve_actor_role(None)
+        order.transition_to(ServiceOrder.Status.IN_REVIEW, author=None, author_role=actor_role)
 
     customer_email = (order.device.customer.email or "").strip()
     if customer_email:
@@ -1857,7 +1819,7 @@ def estimate_decline(request, token):
             "order": _resolve_order_folio(order),
             "folio": order.folio,
             "customer": order.device.customer.name,
-            "device": _build_device_label(order),
+            "device": build_device_label(order),
             "total": total_display,
             "declined_at": timezone.localtime(now).isoformat(),
         },
