@@ -173,3 +173,11 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").lower() in ("true", "1", "ye
 # --- Auth redirects ---
 LOGIN_URL = "/admin/login/"
 LOGIN_REDIRECT_URL = "/admin/"
+
+# --- Relax seguridad en modo test (evita 301 del TestClient) ---
+import os, sys
+if "test" in sys.argv:
+    SECURE_SSL_REDIRECT = False
+    SECURE_HSTS_SECONDS = 0
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
