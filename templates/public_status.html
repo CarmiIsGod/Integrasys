@@ -25,10 +25,18 @@
     <table>
       <thead><tr><th>Fecha</th><th>Estado</th></tr></thead>
       <tbody>
-        {% for s in order.history.all %}
-          <tr><td>{{ s.created_at }}</td><td>{{ s.get_status_display }}</td></tr>
+        {% for s in history %}
+          <tr>
+            <td>{{ s.created_at|date:"Y-m-d H:i" }}</td>
+            <td>
+              {% if s.from_status %}
+                <small class="muted">De {{ s.get_from_status_display }} &rarr;</small><br>
+              {% endif %}
+              {{ s.get_status_display }}
+            </td>
+          </tr>
         {% empty %}
-          <tr><td colspan="2">Sin cambios de estado aún.</td></tr>
+          <tr><td colspan="2">Sin cambios de estado aun.</td></tr>
         {% endfor %}
       </tbody>
     </table>

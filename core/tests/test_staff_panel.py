@@ -55,7 +55,9 @@ class StaffPanelTests(TestCase):
 
         order.refresh_from_db()
         self.assertEqual(order.status, "REV")
-        self.assertTrue(StatusHistory.objects.filter(order=order, status="REV").exists())
+        history_entry = StatusHistory.objects.filter(order=order, status="REV").first()
+        self.assertIsNotNone(history_entry)
+        self.assertEqual(history_entry.from_status, "NEW")
 
     def test_list_orders_filters_by_status_and_assignee(self):
         tech = self.User.objects.create_user(username="tecnico", password="pass123", is_staff=True)
@@ -83,6 +85,22 @@ class StaffPanelTests(TestCase):
         self.assertEqual(len(page_orders), 1)
         self.assertEqual(page_orders[0].pk, order_match.pk)
 
+    def test_list_orders_filters_by_date_range(self):
+        order_in = self._create_order()
+        order_out = self._create_order()
+        target_date = timezone.now() - timedelta(days=2)
+        prev_date = timezone.now() - timedelta(days=10)
+        ServiceOrder.objects.filter(pk=order_in.pk).update(checkin_at=target_date)
+        ServiceOrder.objects.filter(pk=order_out.pk).update(checkin_at=prev_date)
+        date_str = timezone.localtime(target_date).date().isoformat()
+        resp = self.client.get(
+            reverse("list_orders"),
+            {"from": date_str, "to": date_str},
+        )
+        self.assertEqual(resp.status_code, 200)
+        page_orders = list(resp.context["page_obj"].object_list)
+        self.assertEqual([o.pk for o in page_orders], [order_in.pk])
+
     def test_list_orders_export_csv_respects_filters(self):
         tech = self.User.objects.create_user(username="csvtech", password="pass123", is_staff=True)
         in_order = self._create_order()
@@ -100,9 +118,18 @@ class StaffPanelTests(TestCase):
         ServiceOrder.objects.filter(pk=out_order.pk).update(checkin_at=older)
 
         date_str = checkin.date().strftime("%Y-%m-%d")
+        ServiceOrder.objects.filter(pk=in_order.pk).update(status=ServiceOrder.Status.IN_REVIEW)
+        ServiceOrder.objects.filter(pk=out_order.pk).update(status=ServiceOrder.Status.WAITING_PARTS)
+
         resp = self.client.get(
             reverse("list_orders"),
-            {"from": date_str, "to": date_str, "export": "1"},
+            {
+                "from": date_str,
+                "to": date_str,
+                "export": "1",
+                "status": ServiceOrder.Status.IN_REVIEW,
+                "assignee": str(tech.pk),
+            },
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["Content-Type"], "text/csv; charset=utf-8")
