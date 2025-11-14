@@ -19,4 +19,12 @@ Aplicación en Django para registrar recepción de equipos, seguimiento interno 
 - `/t/<token>/` vista pública para que el cliente consulte historial y descargas.
 - `/healthz` healthcheck usado por cron y monitoreo.
 
+## Entornos y despliegue
+- **Producción oficial**: VPS en IONOS (`app.integrasyscomputacion.com.mx`) con:
+  - Django 5.x + Gunicorn + Nginx
+  - PostgreSQL 16 local (`integrasys` / usuario `integrasys`)
+  - Backups diarios con `/usr/local/bin/backup_integrasys.sh` → `/var/backups/integrasys/AAAA-MM-DD/`
+- **Render**: entorno antiguo usado para pruebas.  
+  - **Estado**: deprecado, no se mantiene ni se usa como entorno de producción.
+
 Consulta `README_prod.md` para el runbook de producción y `deploy/` para ejemplos de configuración.
