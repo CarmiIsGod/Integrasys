@@ -1,22 +1,22 @@
-# Integrasys – Sistema de Órdenes de Servicio
+# Integrasys / Sistema de Ã“rdenes de Servicio
 
-Aplicación Django para registrar recepción de equipos, seguimiento interno y comunicación con clientes.
+AplicaciÃ³n en Django para registrar recepciÃ³n de equipos, seguimiento interno y comunicaciÃ³n con clientes.
 
 ## MVP
-- Recepción crea clientes, dispositivos y órdenes con folio y token público.
-- Panel interno para Gerencia/Recepción/Técnicos con filtros, asignación de técnicos, adjuntos y pagos.
+- RecepciÃ³n crea clientes, dispositivos y Ã³rdenes con folio y token pÃºblico.
+- Panel interno para Gerencia/RecepciÃ³n/TÃ©cnicos con filtros, asignaciÃ³n de tÃ©cnicos, adjuntos y pagos.
 - Cotizaciones (Estimate) con soporte de inventario y autorizaciones por correo.
-- Notificaciones por correo y panel para estados clave (Listo para recoger / Requiere autorización).
-- Generación de recibos PDF (entrada y pagos) y exportación CSV.
+- Notificaciones por correo y panel para estados clave (Listo para recoger / Requiere autorizaciÃ³n).
+- GeneraciÃ³n de recibos PDF (entrada y pagos) y exportaciÃ³n CSV.
 
 ## Roles
 - **Gerencia**: acceso total, reportes y exportaciones.
-- **Recepción**: captura de órdenes, pagos, asignación de técnicos.
-- **Técnico**: sólo puede gestionar órdenes asignadas y actualizar estados permitidos.
+- **RecepciÃ³n**: captura de Ã³rdenes, pagos, asignaciÃ³n de tÃ©cnicos.
+- **TÃ©cnico**: sÃ³lo puede gestionar Ã³rdenes asignadas y actualizar estados permitidos.
 
 ## Endpoints principales
-- `/recepcion/` panel operativo (requiere autenticación).
-- `/t/<token>/` vista pública para que el cliente consulte historial y descargas.
+- `/recepcion/` panel operativo (requiere autenticaciÃ³n).
+- `/t/<token>/` vista pÃºblica para que el cliente consulte historial y descargas.
 - `/healthz` healthcheck usado por cron y monitoreo.
 
-Consulta `README_prod.md` para el runbook de producción y `deploy/` para ejemplos de configuración.
+Consulta `README_prod.md` para el runbook de producciÃ³n y `deploy/` para ejemplos de configuraciÃ³n.
