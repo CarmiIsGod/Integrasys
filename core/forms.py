@@ -72,10 +72,12 @@ from django.forms import formset_factory
 
 ReceptionDeviceFormSet = formset_factory(
     ReceptionDeviceForm,
-    extra=1,
+    extra=0,
     min_num=1,
     validate_min=True,
-    max_num=5,
+    max_num=20,
+    validate_max=True,
+    can_delete=True,
 )
 
 

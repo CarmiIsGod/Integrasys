@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nueva orden | Integrasys</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -15,13 +16,30 @@
     label{display:block;font-weight:600;margin-bottom:4px;color:#1e293b;}
     input,textarea{width:100%;padding:9px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;box-sizing:border-box;}
     textarea{resize:vertical;min-height:120px;}
-    .actions{display:flex;gap:8px;align-items:center;margin-top:16px;flex-wrap:wrap;}
+    .actions{display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;}
     .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
     button{background:#1d4ed8;color:#fff;border:none;border-radius:999px;padding:9px 16px;font-weight:600;cursor:pointer;}
     ul.messages{list-style:none;padding:0;margin:12px 0;}
     ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
     .device-card{border:1px solid #cbd5f5;border-radius:12px;padding:16px;background:#f8fbff;}
+    .device-card.is-hidden{display:none!important;}
+    .device-card__header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;}
+    .device-delete-field{display:none;}
+    .js-remove-device{display:none;}
+    @media (max-width:900px){
+      body{padding:16px;}
+      h1{font-size:24px;}
+      .grid{grid-template-columns:1fr;}
+      .device-card__header{flex-direction:column;align-items:flex-start;gap:6px;}
+      .actions{flex-direction:column;align-items:flex-start;}
+      .btn,.btn-ghost,button{width:100%;text-align:center;}
+      input,textarea{font-size:15px;}
+    }
+    @media (max-width:520px){
+      body{padding:12px;}
+      .js-remove-device{width:100%;}
+    }
   </style>
 </head>
 <body>
@@ -67,13 +85,17 @@
             <h2>Dispositivos</h2>
             <p class="muted" style="margin:4px 0 0;">Agrega cada dispositivo (máx. {{ device_formset.max_num }} por orden).</p>
           </div>
-          <button type="button" class="btn btn-ghost" id="add-device-btn" type="button">Añadir dispositivo</button>
+          <button type="button" class="btn btn-ghost" id="add-device-btn">Añadir dispositivo</button>
         </div>
         {{ device_formset.management_form }}
         <div id="device-formset" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
           {% for form in device_formset %}
-            <div class="device-card" data-device-form>
-              <h3 style="margin-bottom:8px;color:#1d4ed8;">Dispositivo {{ forloop.counter }}</h3>
+            <div class="device-card{% if form.DELETE.value %} is-hidden{% endif %}" data-device-form data-device-index="{{ forloop.counter0 }}">
+              <div class="device-card__header">
+                <h3 style="color:#1d4ed8;">Dispositivo {{ forloop.counter }}</h3>
+                <button type="button" class="btn btn-ghost js-remove-device">Quitar dispositivo</button>
+              </div>
+              {{ form.non_field_errors }}
               <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
                 <div>
                   <label>Marca*</label>
@@ -94,6 +116,9 @@
               <label style="margin-top:12px;display:block;">Descripción / Falla</label>
               {{ form.notes }}
               {% for error in form.notes.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+              {% if form.DELETE %}
+                <span class="device-delete-field">{{ form.DELETE }}</span>
+              {% endif %}
             </div>
           {% endfor %}
         </div>
@@ -105,8 +130,11 @@
     </form>
 
     <template id="device-form-template">
-      <div class="device-card" data-device-form>
-        <h3 style="margin-bottom:8px;color:#1d4ed8;">Dispositivo __NUM__</h3>
+      <div class="device-card" data-device-form data-device-index="__prefix__">
+        <div class="device-card__header">
+          <h3 style="color:#1d4ed8;">Dispositivo __NUM__</h3>
+          <button type="button" class="btn btn-ghost js-remove-device">Quitar dispositivo</button>
+        </div>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
           <div>
             <label>Marca*</label>
@@ -123,34 +151,87 @@
         </div>
         <label style="margin-top:12px;display:block;">Descripción / Falla</label>
         {{ device_formset.empty_form.notes }}
+        {% if device_formset.empty_form.DELETE %}
+          <span class="device-delete-field">{{ device_formset.empty_form.DELETE }}</span>
+        {% endif %}
       </div>
     </template>
   </main>
   <script>
-    (function(){
-      const formsetContainer = document.getElementById("device-formset");
-      const addBtn = document.getElementById("add-device-btn");
-      const totalInput = document.querySelector("input[name='{{ device_formset.prefix }}-TOTAL_FORMS']");
-      const maxForms = {{ device_formset.max_num }};
+    document.addEventListener("DOMContentLoaded", function(){
+      const container = document.getElementById("device-formset");
+      if (!container) return;
+      const addButton = document.getElementById("add-device-btn");
+      const totalInput = document.getElementById("id_{{ device_formset.prefix }}-TOTAL_FORMS");
+      const maxInput = document.getElementById("id_{{ device_formset.prefix }}-MAX_NUM_FORMS");
+      const maxForms = maxInput ? parseInt(maxInput.value || "{{ device_formset.max_num }}", 10) : {{ device_formset.max_num }};
       const template = document.getElementById("device-form-template");
-      if (!formsetContainer || !addBtn || !totalInput || !template){
-        return;
+
+      function getDeleteInput(formDiv){
+        return formDiv.querySelector("input[name$='-DELETE']");
       }
-      addBtn.addEventListener("click", function(){
+
+      function getActiveForms(){
+        return Array.from(container.querySelectorAll("[data-device-form]")).filter((formDiv) => {
+          const deleteField = getDeleteInput(formDiv);
+          return !formDiv.classList.contains("is-hidden") && !(deleteField && deleteField.checked);
+        });
+      }
+
+      function updateRemoveButtons(){
+        const activeCount = getActiveForms().length;
+        container.querySelectorAll(".js-remove-device").forEach((btn) => {
+          const formDiv = btn.closest("[data-device-form]");
+          const deleteField = formDiv ? getDeleteInput(formDiv) : null;
+          const isDeleted = deleteField && deleteField.checked;
+          btn.style.display = activeCount <= 1 && !isDeleted ? "none" : "inline-flex";
+        });
+      }
+
+      function handleRemove(event){
+        const formDiv = event.currentTarget.closest("[data-device-form]");
+        if (!formDiv) return;
+        const deleteField = getDeleteInput(formDiv);
+        if (!deleteField) return;
+        if (getActiveForms().length <= 1){
+          alert("La orden debe tener al menos un dispositivo.");
+          return;
+        }
+        deleteField.checked = true;
+        formDiv.classList.add("is-hidden");
+        updateRemoveButtons();
+      }
+
+      function bindRemoveButtons(){
+        container.querySelectorAll(".js-remove-device").forEach((btn) => {
+          if (btn.dataset.bound === "1") return;
+          btn.addEventListener("click", handleRemove);
+          btn.dataset.bound = "1";
+        });
+        updateRemoveButtons();
+      }
+
+      function addDeviceForm(){
+        if (!template || !totalInput) return;
         const currentTotal = parseInt(totalInput.value || "0", 10);
         if (currentTotal >= maxForms){
           alert("Alcanzaste el máximo de dispositivos permitidos.");
           return;
         }
-        const clone = template.content.cloneNode(true);
-        const wrapper = clone.querySelector("[data-device-form]");
-        wrapper.innerHTML = wrapper.innerHTML
-          .replace(/__prefix__/g, currentTotal)
-          .replace(/__NUM__/g, currentTotal + 1);
-        formsetContainer.appendChild(clone);
+        const html = template.innerHTML.replace(/__prefix__/g, currentTotal).replace(/__NUM__/g, currentTotal + 1);
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = html.trim();
+        const newForm = wrapper.firstElementChild;
+        container.appendChild(newForm);
         totalInput.value = currentTotal + 1;
-      });
-    })();
+        bindRemoveButtons();
+      }
+
+      if (addButton) {
+        addButton.addEventListener("click", addDeviceForm);
+      }
+      bindRemoveButtons();
+    });
   </script>
 </body>
 </html>

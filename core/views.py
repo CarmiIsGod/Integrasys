@@ -1374,7 +1374,12 @@ def customer_devices(request, pk):
             Device.objects.create(customer=customer, brand=brand, model=model_value, serial=serial_value)
             messages.success(request, "Dispositivo agregado.")
             return redirect("customer_devices", pk=customer.pk)
-    devices = Device.objects.filter(customer=customer).order_by("-id")
+    devices = (
+        Device.objects.filter(customer=customer)
+        .prefetch_related("orders")
+        .annotate(order_count=Count("orders", distinct=True))
+        .order_by("-id")
+    )
     return render(
         request,
         "clientes/customer_devices.html",
@@ -1400,7 +1405,7 @@ def reception_home(request):
 def reception_new_order(request):
     prefill = {"name": "", "phone": "", "email": "", "notes": ""}
     form = ReceptionForm()
-    device_formset = ReceptionDeviceFormSet(prefix="devices")
+    device_formset = ReceptionDeviceFormSet(prefix="devices", initial=[{}])
     if request.method == "POST":
         data = request.POST.copy()
         if "name" in data and "customer_name" not in data:
@@ -1415,8 +1420,9 @@ def reception_new_order(request):
             legacy_notes = data.get("notes", "")
             data["devices-TOTAL_FORMS"] = "1"
             data["devices-INITIAL_FORMS"] = "0"
-            data["devices-MIN_NUM_FORMS"] = "0"
-            data["devices-MAX_NUM_FORMS"] = "5"
+            data["devices-MIN_NUM_FORMS"] = "1"
+            max_forms = getattr(ReceptionDeviceFormSet, "max_num", 20) or 20
+            data["devices-MAX_NUM_FORMS"] = str(max_forms)
             data["devices-0-brand"] = legacy_brand
             data["devices-0-model"] = legacy_model
             data["devices-0-serial"] = legacy_serial
@@ -1433,6 +1439,8 @@ def reception_new_order(request):
             device_entries = []
             for device_form in device_formset:
                 device_cleaned = getattr(device_form, "cleaned_data", None) or {}
+                if device_cleaned.get("DELETE"):
+                    continue
                 brand = device_cleaned.get("brand", "").strip()
                 model = device_cleaned.get("model", "").strip()
                 if not brand and not model:

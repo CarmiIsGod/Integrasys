@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88" role="img" aria-labelledby="isologoTitle">
+  <title id="isologoTitle">Integrasys símbolo</title>
+  <rect width="88" height="88" rx="20" fill="#eef2ff"/>
+  <path d="M28.5 21a5 5 0 0 1 4.2 7.9l-9 14 9.1 14.1a5 5 0 1 1-8.5 5.3L12.7 44.3a8 8 0 0 1 0-7.9L24.2 24a5 5 0 0 1 4.3-3z" fill="#3b82f6"/>
+  <path d="M59.5 21a5 5 0 0 0-4.2 7.9l9 14-9.1 14.1a5 5 0 0 0 8.5 5.3L75.3 44.3a8 8 0 0 0 0-7.9L63.8 24a5 5 0 0 0-4.3-3z" fill="#1d4ed8"/>
+  <circle cx="44" cy="44" r="8" fill="#6366f1"/>
+</svg>

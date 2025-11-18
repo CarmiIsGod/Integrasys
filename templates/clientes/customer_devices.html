@@ -2,11 +2,12 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dispositivos de {{ customer.name }}</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
     h1{margin-bottom:12px}
-    form{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}
+    form{margin:12px 0;display:flex;gap:12px;flex-wrap:wrap}
     input,button{padding:8px;border:1px solid #d1d5db;border-radius:6px}
     button{background:#2563eb;color:#fff;border:0;cursor:pointer}
     table{width:100%;border-collapse:collapse;margin-top:12px}
@@ -15,6 +16,14 @@
     .messages{margin-bottom:12px}
     .messages li{list-style:none;padding:6px 10px;border-radius:6px;background:#f3f4f6;margin-bottom:6px}
     a.btn{display:inline-block;padding:8px 12px;border-radius:6px;background:#6b7280;color:#fff;text-decoration:none;margin-top:12px}
+    .muted{color:#6b7280;font-size:13px}
+    .table-wrapper{overflow-x:auto;margin-top:12px;}
+    @media(max-width:768px){
+      body{margin:12px;}
+      form{flex-direction:column;}
+      input{flex:1 0 100%;}
+      button,a.btn{width:100%;text-align:center;}
+    }
   </style>
 </head>
 <body>
@@ -34,20 +43,33 @@
     <button type="submit">Agregar</button>
   </form>
 
+  <div class="table-wrapper">
   <table>
-    <thead><tr><th>Marca</th><th>Modelo</th><th>Serie</th></tr></thead>
+    <thead><tr><th>Marca</th><th>Modelo</th><th>Serie</th><th>&Oacute;rdenes vinculadas</th></tr></thead>
     <tbody>
       {% for d in devices %}
         <tr>
-          <td>{{ d.brand|default:"—" }}</td>
-          <td>{{ d.model|default:"—" }}</td>
-          <td>{{ d.serial|default:"—" }}</td>
+          <td>{{ d.brand|default:"―" }}</td>
+          <td>{{ d.model|default:"―" }}</td>
+          <td>{{ d.serial|default:"―" }}</td>
+          <td>
+            {% if d.orders.all %}
+              <ul style="margin:0;padding-left:18px;">
+                {% for order in d.orders.all %}
+                  <li><a href="{% url 'order_detail' order.pk %}" target="_blank" rel="noopener">{{ order.folio }}</a></li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="muted">Sin &oacute;rdenes</span>
+            {% endif %}
+          </td>
         </tr>
       {% empty %}
-        <tr><td colspan="3">Sin dispositivos registrados.</td></tr>
+        <tr><td colspan="4">Sin dispositivos registrados.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <a class="btn" href="{% url 'list_orders' %}">Volver</a>
 </body>

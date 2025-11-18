@@ -28,8 +28,8 @@
     .dropzone span{color:#475569;font-size:14px;}
     .dropzone.is-dragging{border-color:#2563eb;background:#dbeafe;}
     .dropzone input{display:none;}
-    .file-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:14px;color:#475569;}
-    .file-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+    .file-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:14px;color:#475569;}
+    .file-list{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;}
     .file-chip{background:#eff6ff;color:#1e40af;padding:6px 10px;border-radius:12px;font-size:13px;display:flex;align-items:center;gap:6px;border:1px solid #bfdbfe;}
     .file-chip small{color:#475569;}
     .file-chip button{background:none;border:none;color:#1e40af;font-weight:600;cursor:pointer;}
@@ -50,7 +50,7 @@
         <h1>Adjuntos de la orden {{ order.folio }}</h1>
         <p class="muted">Sube y administra los archivos asociados.</p>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <a class="btn btn-ghost" href="{% url 'order_detail' order.pk %}">&larr; Orden</a>
         <a class="btn btn-ghost" href="{% url 'order_attachments' order.pk %}">Refrescar</a>
       </div>
@@ -88,21 +88,21 @@
 
     <section class="card">
       <h2>Adjuntos existentes</h2>
-      {% if attachments %}
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
+    {% if attachments %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Vista previa</th>
+              <th>Archivo</th>
+              <th>Comentario</th>
+              <th>Subido</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for att in attachments %}
               <tr>
-                <th>Vista previa</th>
-                <th>Archivo</th>
-                <th>Comentario</th>
-                <th>Subido</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for att in attachments %}
-                <tr>
                   <td>
                     {% if att.is_image %}
                       <a href="{{ att.file.url }}" target="_blank" rel="noopener">
@@ -125,11 +125,11 @@
                     </form>
                   </td>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
         <p class="muted">Sin adjuntos registrados.</p>
       {% endif %}
     </section>

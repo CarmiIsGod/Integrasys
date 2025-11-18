@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Inventario | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
@@ -21,6 +22,20 @@
     tbody tr:nth-child(odd){background:#f8fbff;}
     tbody tr:hover{background:#eef4ff;}
     .pill{display:inline-block;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px;}
+    .table-wrapper{overflow-x:auto;border-radius:12px;background:#fff;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
+    .table-wrapper table{border-radius:0;box-shadow:none;}
+    @media (max-width:900px){
+      body{padding:16px;}
+      .card{padding:14px;}
+      form input{width:100%;}
+      form button,.btn,.btn-ghost{width:100%;text-align:center;}
+      section.card form{grid-template-columns:1fr;}
+    }
+    @media (max-width:600px){
+      body{padding:12px;}
+      h1{font-size:24px;}
+      th,td{padding:10px;}
+    }
   </style>
 </head>
 <body>
@@ -31,7 +46,7 @@
         <h1>Inventario</h1>
         <p class="muted">Consulta existencias, registra entradas y administra refacciones.</p>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <a class="btn btn-ghost" href="{% url 'reception_home' %}">&larr; Inicio</a>
         <a class="btn btn-ghost" href="{% url 'inventory_create' %}">Nuevo item</a>
         <a class="btn btn-ghost" href="{% url 'export_inventory_csv' %}">Exportar CSV</a>
@@ -50,12 +65,12 @@
           <label>Buscar SKU / Nombre / Ubicación
             <input name="q" placeholder="Buscar" value="{{ q }}">
           </label>
-          <label style="display:flex;align-items:flex-end;gap:8px;">
+          <label style="display:flex;align-items:flex-end;gap:12px;">
             <input type="checkbox" name="low" value="1" {% if low %}checked{% endif %}>
             <span>Solo con stock bajo</span>
           </label>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">
           <button type="submit">Filtrar</button>
           <a href="{% url 'inventory_list' %}" class="btn btn-ghost">Limpiar</a>
         </div>
@@ -74,6 +89,7 @@
     </section>
 
     <section class="card" style="padding:0;">
+      <div class="table-wrapper">
       <table>
         <thead>
           <tr>
@@ -99,7 +115,7 @@
               </td>
               <td>{{ it.min_qty }}</td>
               <td>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
                   <a href="{% url 'inventory_update' it.pk %}">Editar</a>
                   <a href="{% url 'inventory_delete' it.pk %}">Eliminar</a>
                 </div>
@@ -112,6 +128,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
   </main>
 </body>

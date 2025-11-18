@@ -1,11 +1,12 @@
 ﻿<!doctype html>
+{% load static %}
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Recepción | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
-    h1{margin:0 0 12px;font-size:28px;}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:16px;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
     .card h3{margin:0 0 6px;font-size:18px;color:#1d4ed8;}
@@ -15,13 +16,23 @@
     form input{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
     form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
     .link-ghost{background:#e2e8f0;color:#1e293b;}
+    @media (max-width:768px){
+      body{padding:16px;}
+      .grid{grid-template-columns:1fr;}
+      .card{padding:14px;}
+      form input{width:100%;}
+    }
+    @media (max-width:480px){
+      body{padding:12px;}
+      .reception-nav{border-radius:0;}
+      .card h3{font-size:16px;}
+      .muted{font-size:13px;}
+    }
   </style>
 </head>
 <body>
   {% include "partials/reception_nav.html" %}
   <main>
-    <h1>Recepción</h1>
-    <p class="muted">Accesos rápidos para el equipo de recepción.</p>
     <div class="grid">
       <div class="card">
         <h3>Nueva orden</h3>
@@ -44,7 +55,7 @@
       <div class="card">
         <h3>Reportes</h3>
         <p class="muted">Descarga reportes actualizados en CSV.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
           <a class="btn link-ghost" href="{% url 'export_orders_csv' %}">Órdenes CSV</a>
           <a class="btn link-ghost" href="{% url 'export_inventory_csv' %}">Inventario CSV</a>
         </div>

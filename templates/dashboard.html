@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Panel del staff</title>
     <style>
         body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background-color: #f4f6f9; color: #1f2933; }
@@ -43,6 +44,13 @@
             .layout { padding: 16px; }
             .card .value { font-size: 20px; }
             .chart-labels span { flex: 1 1 45px; }
+        }
+        @media (max-width:480px){
+            .layout{padding:12px;}
+            h1{font-size:24px;}
+            .filters{grid-template-columns:1fr;}
+            .filter-actions{flex-direction:column;}
+            .filters button,.btn-secondary{width:100%;text-align:center;}
         }
     </style>
 </head>
