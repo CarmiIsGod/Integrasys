@@ -32,8 +32,19 @@
 <body>
   <header>
     <h1>Cotizacion {{ order.folio }}</h1>
-    <div class="muted">Cliente: {{ customer.name }}</div>
-    <div class="muted">Equipo: {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+    <div class="muted">Cliente: {{ customer.name|default:"-" }}</div>
+    <div class="muted">
+      Equipos:
+      {% if order_devices %}
+        <ul style="margin:4px 0 0 18px;padding:0;">
+          {% for device in order_devices %}
+            <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <span class="muted">(sin dispositivos)</span>
+      {% endif %}
+    </div>
   </header>
 
   {% if approved_at_local %}

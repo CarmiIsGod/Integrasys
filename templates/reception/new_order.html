@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -7,10 +7,11 @@
     *, *::before, *::after { box-sizing: border-box; }
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
     h1{margin:0 0 12px;font-size:28px;}
+    h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+    h3{margin:0;font-size:18px;}
     .muted{color:#64748b;font-size:14px;margin:0;}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
-    .card h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
     label{display:block;font-weight:600;margin-bottom:4px;color:#1e293b;}
     input,textarea{width:100%;padding:9px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;box-sizing:border-box;}
     textarea{resize:vertical;min-height:120px;}
@@ -20,6 +21,7 @@
     button{background:#1d4ed8;color:#fff;border:none;border-radius:999px;padding:9px 16px;font-weight:600;cursor:pointer;}
     ul.messages{list-style:none;padding:0;margin:12px 0;}
     ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
+    .device-card{border:1px solid #cbd5f5;border-radius:12px;padding:16px;background:#f8fbff;}
   </style>
 </head>
 <body>
@@ -28,7 +30,7 @@
     <div class="actions" style="justify-content:space-between;margin-bottom:12px;">
       <div>
         <h1>Nueva orden</h1>
-        <p class="muted">Captura los datos del cliente y del equipo para generar una orden de servicio.</p>
+        <p class="muted">Captura los datos del cliente y los equipos que ingresan en la misma orden.</p>
       </div>
       <a href="{% url 'reception_home' %}" class="btn btn-ghost">&larr; Inicio</a>
     </div>
@@ -39,7 +41,7 @@
       </ul>
     {% endif %}
 
-    <form method="post">
+    <form method="post" id="new-order-form">
       {% csrf_token %}
       <div class="grid">
         <div class="card">
@@ -53,22 +55,102 @@
           <p class="muted" style="margin-top:10px;">Si los datos coinciden con un cliente existente se reutilizarán automáticamente.</p>
         </div>
         <div class="card">
-          <h2>Equipo</h2>
-          <label>Marca*</label>
-          <input name="brand" value="{{ prefill.brand }}" required>
-          <label style="margin-top:12px;">Modelo*</label>
-          <input name="model" value="{{ prefill.model }}" required>
-          <label style="margin-top:12px;">Serie</label>
-          <input name="serial" value="{{ prefill.serial }}" placeholder="Opcional">
-        </div>
-        <div class="card">
-          <h2>Descripción</h2>
+          <h2>Notas generales</h2>
           <label>Notas</label>
-          <textarea name="notes" placeholder="Falla, accesorios, condición general...">{{ prefill.notes }}</textarea>
-          <button type="submit" style="margin-top:14px;">Crear orden</button>
+          <textarea name="notes" placeholder="Comentarios generales, accesorios, prioridad...">{{ prefill.notes }}</textarea>
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h2>Dispositivos</h2>
+            <p class="muted" style="margin:4px 0 0;">Agrega cada dispositivo (máx. {{ device_formset.max_num }} por orden).</p>
+          </div>
+          <button type="button" class="btn btn-ghost" id="add-device-btn" type="button">Añadir dispositivo</button>
+        </div>
+        {{ device_formset.management_form }}
+        <div id="device-formset" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+          {% for form in device_formset %}
+            <div class="device-card" data-device-form>
+              <h3 style="margin-bottom:8px;color:#1d4ed8;">Dispositivo {{ forloop.counter }}</h3>
+              <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+                <div>
+                  <label>Marca*</label>
+                  {{ form.brand }}
+                  {% for error in form.brand.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+                </div>
+                <div>
+                  <label>Modelo*</label>
+                  {{ form.model }}
+                  {% for error in form.model.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+                </div>
+                <div>
+                  <label>Serie</label>
+                  {{ form.serial }}
+                  {% for error in form.serial.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <label style="margin-top:12px;display:block;">Descripción / Falla</label>
+              {{ form.notes }}
+              {% for error in form.notes.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:16px;">
+        <button type="submit">Crear orden</button>
+      </div>
     </form>
+
+    <template id="device-form-template">
+      <div class="device-card" data-device-form>
+        <h3 style="margin-bottom:8px;color:#1d4ed8;">Dispositivo __NUM__</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+          <div>
+            <label>Marca*</label>
+            {{ device_formset.empty_form.brand }}
+          </div>
+          <div>
+            <label>Modelo*</label>
+            {{ device_formset.empty_form.model }}
+          </div>
+          <div>
+            <label>Serie</label>
+            {{ device_formset.empty_form.serial }}
+          </div>
+        </div>
+        <label style="margin-top:12px;display:block;">Descripción / Falla</label>
+        {{ device_formset.empty_form.notes }}
+      </div>
+    </template>
   </main>
+  <script>
+    (function(){
+      const formsetContainer = document.getElementById("device-formset");
+      const addBtn = document.getElementById("add-device-btn");
+      const totalInput = document.querySelector("input[name='{{ device_formset.prefix }}-TOTAL_FORMS']");
+      const maxForms = {{ device_formset.max_num }};
+      const template = document.getElementById("device-form-template");
+      if (!formsetContainer || !addBtn || !totalInput || !template){
+        return;
+      }
+      addBtn.addEventListener("click", function(){
+        const currentTotal = parseInt(totalInput.value || "0", 10);
+        if (currentTotal >= maxForms){
+          alert("Alcanzaste el máximo de dispositivos permitidos.");
+          return;
+        }
+        const clone = template.content.cloneNode(true);
+        const wrapper = clone.querySelector("[data-device-form]");
+        wrapper.innerHTML = wrapper.innerHTML
+          .replace(/__prefix__/g, currentTotal)
+          .replace(/__NUM__/g, currentTotal + 1);
+        formsetContainer.appendChild(clone);
+        totalInput.value = currentTotal + 1;
+      });
+    })();
+  </script>
 </body>
 </html>

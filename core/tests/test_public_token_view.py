@@ -8,7 +8,8 @@ class PublicTokenViewTests(TestCase):
     def setUp(self):
         customer = Customer.objects.create(name="Cliente", email="c@example.com")
         device = Device.objects.create(customer=customer, brand="Dell", model="XPS", serial="SN-9")
-        self.order = ServiceOrder.objects.create(device=device)
+        self.order = ServiceOrder.objects.create(customer=customer, device=device)
+        self.order.devices.set([device])
         StatusHistory.log(self.order, from_status="", to_status=ServiceOrder.Status.NEW, author=None)
         StatusHistory.log(
             self.order,

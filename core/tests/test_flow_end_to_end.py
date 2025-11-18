@@ -30,10 +30,15 @@ class FlowEndToEndTests(TestCase):
             "customer_name": "Cliente Demo",
             "customer_phone": "5551112233",
             "customer_email": "cliente@example.com",
-            "brand": "Dell",
-            "model": "XPS",
-            "serial": "ABC-123",
-            "notes": "No enciende",
+            "notes": "Revision completa",
+            "devices-TOTAL_FORMS": "1",
+            "devices-INITIAL_FORMS": "0",
+            "devices-MIN_NUM_FORMS": "1",
+            "devices-MAX_NUM_FORMS": "5",
+            "devices-0-brand": "Dell",
+            "devices-0-model": "XPS",
+            "devices-0-serial": "ABC-123",
+            "devices-0-notes": "No enciende",
         }
         resp = self.client.post(reverse("reception_new_order"), reception_payload)
         self.assertEqual(resp.status_code, 302)

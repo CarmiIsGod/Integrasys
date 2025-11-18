@@ -90,12 +90,20 @@
           <tr>
             <td>{{ o.folio }}</td>
             <td>
-              {{ o.device.customer.name }}<br>
-              <span class="muted">Tec: {{ o.assigned_to|default:"—" }} · <a href="{% url 'customer_devices' o.device.customer.id %}" target="_blank">Ver dispositivos</a></span>
+              {{ o.customer_obj.name|default:"-" }}<br>
+              <span class="muted">Tec: {{ o.assigned_to|default:"-" }} {% if o.customer_obj %}· <a href="{% url 'customer_devices' o.customer_obj.id %}" target="_blank">Ver dispositivos</a>{% endif %}</span>
             </td>
             <td>
-              {{ o.device.brand }} {{ o.device.model }}
-              {% if o.device.serial %}<div class="muted">Serie: {{ o.device.serial }}</div>{% endif %}
+              {% if o.device_list %}
+                {% for device in o.device_list %}
+                  <div>
+                    {{ device.brand }} {{ device.model }}
+                    {% if device.serial %}<div class="muted">Serie: {{ device.serial }}</div>{% endif %}
+                  </div>
+                {% endfor %}
+              {% else %}
+                <span class="muted">Sin dispositivos</span>
+              {% endif %}
             </td>
             <td>{{ o.get_status_display }}</td>
             <td>{{ o.checkin_at|date:"Y-m-d H:i" }}</td>

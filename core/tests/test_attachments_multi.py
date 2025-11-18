@@ -18,7 +18,8 @@ class AttachmentMultiUploadTests(TestCase):
 
         customer = Customer.objects.create(name="Cliente", phone="", email="")
         device = Device.objects.create(customer=customer, brand="Marca", model="Modelo", serial="ABC123")
-        self.order = ServiceOrder.objects.create(device=device)
+        self.order = ServiceOrder.objects.create(customer=customer, device=device)
+        self.order.devices.set([device])
 
     def _upload(self, files, **extra):
         url = reverse("order_attachments", args=[self.order.pk])

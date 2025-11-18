@@ -18,8 +18,18 @@
 </head>
 <body>
   <h1>Cotizacion {{ order.folio }}{% if estimate.approved_at %}<span class="badge">Aprobada</span>{% elif estimate.declined_at %}<span class="badge" style="background:#fee2e2;color:#991b1b">Rechazada</span>{% endif %}</h1>
-  <p><b>Cliente:</b> {{ order.device.customer.name }}</p>
-  <p><b>Equipo:</b> {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</p>
+  <p><b>Cliente:</b> {{ customer.name|default:order.customer.name }}</p>
+  <div><b>Equipos:</b>
+    {% if order_devices %}
+      <ul style="margin:4px 0 0 16px;padding:0;">
+        {% for device in order_devices %}
+          <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <span class="muted">(sin dispositivos)</span>
+    {% endif %}
+  </div>
   <p><b>Fecha:</b> {{ estimate.updated_at|date:"Y-m-d H:i" }}</p>
   {% if public_url %}<p class="muted">Vista en linea: {{ public_url }}</p>{% endif %}
 

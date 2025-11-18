@@ -59,9 +59,23 @@
       </div>
       <div class="card">
         <h2>Cliente y equipo</h2>
-        <p><strong>Cliente:</strong> {{ order.device.customer.name }}</p>
-        <p class="muted">Tel: {{ order.device.customer.phone|default:"—" }} · Email: {{ order.device.customer.email|default:"—" }}</p>
-        <p style="margin-top:8px;"><strong>Equipo:</strong> {{ order.device.brand }} {{ order.device.model }} {% if order.device.serial %}<span class="muted">(Serie {{ order.device.serial }})</span>{% endif %}</p>
+        <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
+        <p class="muted">Tel: {{ order_customer.phone|default:"—" }} · Email: {{ order_customer.email|default:"—" }}</p>
+        <div style="margin-top:8px;">
+          <strong>Dispositivos:</strong>
+          {% if order_devices %}
+            <ul style="padding-left:18px;margin:8px 0;">
+              {% for device in order_devices %}
+                <li>
+                  {{ device.brand }} {{ device.model }}
+                  {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="muted">(sin dispositivos asociados)</p>
+          {% endif %}
+        </div>
       </div>
       <div class="card">
         <h2>Cotización</h2>
@@ -98,22 +112,36 @@
           <input type="number" name="amount" step="0.01" min="0.01" placeholder="Monto" required>
           <input type="text" name="method" maxlength="30" placeholder="Método" required>
           <input type="text" name="reference" maxlength="80" placeholder="Referencia">
+          <select name="device_id">
+            <option value="">Aplica a la orden completa</option>
+            {% for device in order_devices %}
+              <option value="{{ device.id }}">{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</option>
+            {% endfor %}
+          </select>
           <button type="submit">Registrar pago</button>
         </form>
       {% endif %}
       <div style="margin-top:12px;overflow-x:auto;">
         <table>
-          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Dispositivo</th></tr></thead>
           <tbody>
             {% for p in payments %}
               <tr>
                 <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
                 <td>${{ p.amount|floatformat:2 }}</td>
-                <td>{{ p.method|default:"—" }}</td>
-                <td>{{ p.reference|default:"—" }}</td>
+                <td>{{ p.method|default:"-" }}</td>
+                <td>{{ p.reference|default:"-" }}</td>
+                <td>
+                  {% if p.device %}
+                    {{ p.device.brand }} {{ p.device.model }}
+                    {% if p.device.serial %}<div class="muted">Serie: {{ p.device.serial }}</div>{% endif %}
+                  {% else %}
+                    <span class="muted">Orden completa</span>
+                  {% endif %}
+                </td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
+              <tr><td colspan="5" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
             {% endfor %}
           </tbody>
         </table>

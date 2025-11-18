@@ -41,7 +41,9 @@ class StaffPanelTests(TestCase):
     def _create_order(self):
         c = Customer.objects.create(name="Cliente", phone="", email="")
         d = Device.objects.create(customer=c, brand="Marca", model="Modelo", serial="SER123")
-        return ServiceOrder.objects.create(device=d)
+        order = ServiceOrder.objects.create(customer=c, device=d)
+        order.devices.set([d])
+        return order
 
     def test_list_orders_ok(self):
         resp = self.client.get("/recepcion/ordenes/")
@@ -166,10 +168,15 @@ class StaffPanelTests(TestCase):
             "customer_name": "Cliente Demo",
             "customer_phone": "5551234567",
             "customer_email": "cliente@example.com",
-            "brand": "Dell",
-            "model": "XPS 15",
-            "serial": "SN-001",
-            "notes": "No enciende",
+            "notes": "Orden prioridad alta",
+            "devices-TOTAL_FORMS": "1",
+            "devices-INITIAL_FORMS": "0",
+            "devices-MIN_NUM_FORMS": "1",
+            "devices-MAX_NUM_FORMS": "5",
+            "devices-0-brand": "Dell",
+            "devices-0-model": "XPS 15",
+            "devices-0-serial": "SN-001",
+            "devices-0-notes": "No enciende",
         }
         resp = self.client.post(reverse("reception_new_order"), new_order_payload)
         self.assertEqual(resp.status_code, 302)

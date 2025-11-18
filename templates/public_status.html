@@ -19,7 +19,21 @@
   <div class="card">
     <img class="qr" src="./qr.png" width="120" height="120" alt="QR">
     <h1>Folio {{ order.folio }}</h1>
-    <div class="muted">Cliente: {{ order.device.customer.name }}  Equipo: {{ order.device.brand }} {{ order.device.model }}</div>
+    <div class="muted">Cliente: {{ order.customer.name|default:"-" }}</div>
+    <div>
+      <span class="muted">Equipos:</span>
+      {% with devices=order.devices.all %}
+        {% if devices %}
+          <ul style="margin:4px 0 0 18px;padding:0;">
+            {% for device in devices %}
+              <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <span class="muted">(sin dispositivos)</span>
+        {% endif %}
+      {% endwith %}
+    </div>
     <p>Estado actual: <span class="status">{{ order.get_status_display }}</span></p>
     <h3>Historial</h3>
     <table>
