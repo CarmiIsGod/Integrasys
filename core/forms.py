@@ -11,10 +11,7 @@ class ReceptionForm(forms.Form):
     customer_name = forms.CharField(label="Nombre", max_length=100)
     customer_phone = forms.CharField(label="Telefono", max_length=30, required=False)
     customer_email = forms.EmailField(label="Email", required=False)
-    brand = forms.CharField(label="Marca", max_length=50)
-    model = forms.CharField(label="Modelo", max_length=50)
-    serial = forms.CharField(label="Serie", max_length=100, required=False)
-    notes = forms.CharField(label="Descripcion / Falla", widget=forms.Textarea, required=False)
+    notes = forms.CharField(label="Notas generales", widget=forms.Textarea, required=False)
 
     def _strip(self, key):
         value = (self.cleaned_data.get(key) or "").strip()
@@ -22,15 +19,6 @@ class ReceptionForm(forms.Form):
 
     def clean_customer_name(self):
         return self._strip("customer_name")
-
-    def clean_brand(self):
-        return self._strip("brand")
-
-    def clean_model(self):
-        return self._strip("model")
-
-    def clean_serial(self):
-        return self._strip("serial")
 
     def clean_notes(self):
         return (self.cleaned_data.get("notes") or "").strip()
@@ -55,6 +43,42 @@ class ReceptionForm(forms.Form):
         if not phone and not email:
             raise forms.ValidationError("Debes capturar al menos un telefono o un correo.")
         return cleaned
+
+
+class ReceptionDeviceForm(forms.Form):
+    brand = forms.CharField(label="Marca", max_length=50)
+    model = forms.CharField(label="Modelo", max_length=50)
+    serial = forms.CharField(label="Serie", max_length=100, required=False)
+    notes = forms.CharField(label="Descripcion / Falla", widget=forms.Textarea, required=False)
+
+    def _strip(self, key):
+        value = (self.cleaned_data.get(key) or "").strip()
+        return re.sub(r"\s+", " ", value)
+
+    def clean_brand(self):
+        return self._strip("brand")
+
+    def clean_model(self):
+        return self._strip("model")
+
+    def clean_serial(self):
+        return (self.cleaned_data.get("serial") or "").strip()
+
+    def clean_notes(self):
+        return (self.cleaned_data.get("notes") or "").strip()
+
+
+from django.forms import formset_factory
+
+ReceptionDeviceFormSet = formset_factory(
+    ReceptionDeviceForm,
+    extra=0,
+    min_num=1,
+    validate_min=True,
+    max_num=20,
+    validate_max=True,
+    can_delete=True,
+)
 
 
 # === INTEGRASYS PATCH: ATTACHMENTS FORM ===

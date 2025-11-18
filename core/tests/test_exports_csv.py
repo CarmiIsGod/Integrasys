@@ -27,8 +27,10 @@ class ExportCSVTests(TestCase):
         device_recent = Device.objects.create(customer=self.customer, brand="Marca", model="Modelo", serial="ABC123")
         device_old = Device.objects.create(customer=self.customer, brand="Marca2", model="Modelo2", serial="XYZ987")
 
-        self.recent_order = ServiceOrder.objects.create(device=device_recent)
-        self.old_order = ServiceOrder.objects.create(device=device_old)
+        self.recent_order = ServiceOrder.objects.create(customer=self.customer, device=device_recent)
+        self.recent_order.devices.set([device_recent])
+        self.old_order = ServiceOrder.objects.create(customer=self.customer, device=device_old)
+        self.old_order.devices.set([device_old])
 
         recent_checkin = self._aware_datetime(days_ago=1)
         old_checkin = self._aware_datetime(days_ago=10)
@@ -39,6 +41,7 @@ class ExportCSVTests(TestCase):
 
         self.recent_payment = Payment.objects.create(
             order=self.recent_order,
+            device=device_recent,
             amount=Decimal("150.00"),
             method="Efectivo",
             reference="RECENT",
@@ -46,6 +49,7 @@ class ExportCSVTests(TestCase):
         )
         self.old_payment = Payment.objects.create(
             order=self.old_order,
+            device=device_old,
             amount=Decimal("200.00"),
             method="Tarjeta",
             reference="OLD",

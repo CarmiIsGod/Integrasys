@@ -85,7 +85,16 @@ class ServiceOrder(models.Model):
         Status.DELIVERED: (),
     }
 
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        db_index=True,
+        related_name="orders",
+        null=True,
+        blank=True,
+    )
     device = models.ForeignKey(Device, on_delete=models.CASCADE, db_index=True)
+    devices = models.ManyToManyField(Device, related_name="orders", blank=True)
     folio = models.CharField(max_length=20, unique=True, blank=True, editable=False)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW, db_index=True)
@@ -95,7 +104,42 @@ class ServiceOrder(models.Model):
     assigned_to = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):
-        return f"{self.folio} - {self.device}"
+        device_label = self.primary_device_label()
+        if device_label:
+            return f"{self.folio} - {device_label}"
+        return self.folio
+
+    def get_customer(self):
+        if self.customer_id:
+            return self.customer
+        if self.device_id:
+            return getattr(self.device, "customer", None)
+        return None
+
+    def primary_device(self):
+        if hasattr(self, "_primary_device_cache"):
+            return self._primary_device_cache
+        device = None
+        try:
+            device = next(iter(self.devices.all()))
+        except StopIteration:
+            device = None
+        if not device and self.device_id:
+            device = self.device
+        self._primary_device_cache = device
+        return device
+
+    def primary_device_label(self):
+        device = self.primary_device()
+        if not device:
+            return ""
+        parts = [value for value in (device.brand, device.model) if value]
+        serial = getattr(device, "serial", "")
+        if serial:
+            serial_clean = serial.strip()
+            if serial_clean:
+                parts.append(f"({serial_clean})")
+        return " ".join(parts).strip()
 
 
     def save(self, *args, **kwargs):
@@ -121,6 +165,9 @@ class ServiceOrder(models.Model):
                 self.checkout_at = timezone.now()
         except ServiceOrder.DoesNotExist:
             pass
+
+        if not self.customer_id and self.device_id:
+            self.customer = getattr(self.device, "customer", None)
 
         last_error = None
         for _ in range(3):
@@ -241,6 +288,7 @@ class StatusHistory(models.Model):
 
 class Payment(models.Model):
     order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name='payments', db_index=True)
+    device = models.ForeignKey(Device, null=True, blank=True, on_delete=models.SET_NULL, related_name="payments")
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     method = models.CharField(max_length=30, blank=True)
     reference = models.CharField(max_length=80, blank=True)

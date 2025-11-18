@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Órdenes de servicio | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
@@ -11,8 +12,9 @@
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
     form{display:grid;gap:12px;}
-    form label{font-weight:600;color:#1e293b;font-size:14px;}
-    form input,form select{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+    form label{font-weight:600;color:#1e293b;font-size:14px;display:flex;flex-direction:column;gap:6px;}
+    form input,form select{padding:10px;border:1px solid #cbd5f5;border-radius:10px;font-family:inherit;transition:border 0.2s ease;}
+    form input:focus,form select:focus{border-color:#94a3b8;outline:none;box-shadow:0 0 0 3px rgba(148,163,184,0.25);}
     form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
     th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
@@ -22,6 +24,21 @@
     .actions-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
     .pill{display:inline-block;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px;}
     .pager{display:flex;justify-content:space-between;align-items:center;margin-top:18px;color:#64748b;}
+    .table-wrapper{background:#fff;border-radius:12px;box-shadow:0 6px 16px rgba(15,23,42,0.06);overflow-x:auto;}
+    @media (max-width:900px){
+      body{padding:16px;}
+      form label{font-size:13px;}
+      form button,.btn,.btn-ghost{width:100%;justify-content:center;display:inline-flex;}
+      form input,form select{width:100%;}
+      .actions-row{flex-direction:column;align-items:flex-start;}
+    }
+    @media (max-width:600px){
+      body{padding:12px;}
+      h1{font-size:24px;}
+      .pager{flex-direction:column;gap:8px;}
+      .table-wrapper{border-radius:8px;}
+      th,td{padding:10px;}
+    }
   </style>
 </head>
 <body>
@@ -37,7 +54,7 @@
 
     <section class="card" style="margin-bottom:18px;">
       <form method="get">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;">
           <label>Folio / cliente / modelo / serie
             <input type="text" name="q" placeholder="Buscar" value="{{ query }}">
           </label>
@@ -64,7 +81,7 @@
             <input type="date" name="to" value="{{ dto }}">
           </label>
         </div>
-        <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;">
+        <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:12px;">
           <button type="submit">Aplicar filtros</button>
           <a href="{% url 'list_orders' %}" class="btn btn-ghost">Limpiar</a>
           {% if can_export %}
@@ -74,6 +91,7 @@
       </form>
     </section>
 
+    <div class="table-wrapper">
     <table>
       <thead>
         <tr>
@@ -90,12 +108,20 @@
           <tr>
             <td>{{ o.folio }}</td>
             <td>
-              {{ o.device.customer.name }}<br>
-              <span class="muted">Tec: {{ o.assigned_to|default:"—" }} · <a href="{% url 'customer_devices' o.device.customer.id %}" target="_blank">Ver dispositivos</a></span>
+              {{ o.customer_obj.name|default:"-" }}<br>
+              <span class="muted">Tec: {{ o.assigned_to|default:"-" }} {% if o.customer_obj %}· <a href="{% url 'customer_devices' o.customer_obj.id %}" target="_blank">Ver dispositivos</a>{% endif %}</span>
             </td>
             <td>
-              {{ o.device.brand }} {{ o.device.model }}
-              {% if o.device.serial %}<div class="muted">Serie: {{ o.device.serial }}</div>{% endif %}
+              {% if o.device_list %}
+                {% for device in o.device_list %}
+                  <div>
+                    {{ device.brand }} {{ device.model }}
+                    {% if device.serial %}<div class="muted">Serie: {{ device.serial }}</div>{% endif %}
+                  </div>
+                {% endfor %}
+              {% else %}
+                <span class="muted">Sin dispositivos</span>
+              {% endif %}
             </td>
             <td>{{ o.get_status_display }}</td>
             <td>{{ o.checkin_at|date:"Y-m-d H:i" }}</td>
@@ -147,6 +173,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
     <div class="pager">
       {% if page_obj.has_previous %}
@@ -164,3 +191,5 @@
   </main>
 </body>
 </html>
+
+

@@ -3,6 +3,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Notificaciones | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
@@ -17,6 +18,13 @@
     .pill{display:inline-block;background:#1d4ed8;color:#fff;font-size:12px;padding:2px 8px;border-radius:999px;margin-right:6px;}
     .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;border:none;cursor:pointer;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    @media(max-width:768px){
+      body{padding:16px;}
+      h1{font-size:24px;}
+      .card{padding:14px;}
+      .btn,.btn-ghost,button{width:100%;text-align:center;}
+      .notif{padding:12px;}
+    }
   </style>
 </head>
 <body>
@@ -43,7 +51,7 @@
     <section class="notif-list">
       {% for notif in notifications %}
         <article class="notif {% if not notif.seen_at %}notif--unread{% endif %}">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
             <h2>
               {% if notif.kind == "estimate" %}
                 {{ notif.title|default:"Cotizacion" }}

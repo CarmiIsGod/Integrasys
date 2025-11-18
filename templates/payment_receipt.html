@@ -24,8 +24,21 @@
   <table>
     <tr>
       <td>
-        <div><span class="label">Cliente:</span> {{ customer.name }}</div>
-        <div><span class="label">Equipo:</span> {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+        <div><span class="label">Cliente:</span> {{ customer.name|default:"-" }}</div>
+        <div><span class="label">Dispositivos:</span>
+          {% if order_devices %}
+            <ul style="margin:4pt 0 0 16pt;padding:0;">
+              {% for device in order_devices %}
+                <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <span class="muted">(sin dispositivos)</span>
+          {% endif %}
+        </div>
+        {% if payment.device %}
+          <div><span class="label">Pago aplicado a:</span> {{ payment.device.brand }} {{ payment.device.model }}{% if payment.device.serial %} ({{ payment.device.serial }}){% endif %}</div>
+        {% endif %}
       </td>
     </tr>
   </table>

@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cotizacion {{ order.folio }}</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px auto;max-width:760px;color:#1f2937;background:#f9fafb}
@@ -27,13 +28,31 @@
     .note{margin-top:20px}
     .note h2{margin:0 0 6px 0;font-size:16px}
     .note pre{margin:0;background:#f8fafc;padding:14px;border-radius:10px;font-family:inherit;white-space:pre-wrap}
+    .table-wrapper{overflow-x:auto;}
+    @media(max-width:640px){
+      body{margin:12px;}
+      h1{font-size:24px;}
+      .actions{flex-direction:column;}
+      button{width:100%;text-align:center;}
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Cotizacion {{ order.folio }}</h1>
-    <div class="muted">Cliente: {{ customer.name }}</div>
-    <div class="muted">Equipo: {{ order.device.brand }} {{ order.device.model }}{% if order.device.serial %} ({{ order.device.serial }}){% endif %}</div>
+    <div class="muted">Cliente: {{ customer.name|default:"-" }}</div>
+    <div class="muted">
+      Equipos:
+      {% if order_devices %}
+        <ul style="margin:4px 0 0 18px;padding:0;">
+          {% for device in order_devices %}
+            <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <span class="muted">(sin dispositivos)</span>
+      {% endif %}
+    </div>
   </header>
 
   {% if approved_at_local %}
@@ -47,6 +66,7 @@
     <div style="margin-top:6px"><strong>Total:</strong> ${{ total|floatformat:2 }}</div>
   </section>
 
+  <div class="table-wrapper">
   <table>
     <thead>
       <tr>
@@ -71,6 +91,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <div class="card">
     <div class="totals">

@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Orden {{ order.folio }} | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
@@ -19,10 +20,24 @@
     th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
     tbody tr:nth-child(odd){background:#f8fbff;}
     tbody tr:hover{background:#eef4ff;}
-    form.inline{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+    form.inline{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;}
     form.inline input,form.inline textarea,form.inline select{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
     form.inline button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
     textarea{width:100%;padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;min-height:90px;}
+    .table-wrapper{overflow-x:auto;border-radius:12px;background:#fff;box-shadow:0 6px 16px rgba(15,23,42,0.06);margin-top:12px;}
+    .table-wrapper table{box-shadow:none;border-radius:0;}
+    @media (max-width:900px){
+      body{padding:16px;}
+      .grid{grid-template-columns:1fr;}
+      .card{padding:14px;}
+      h1{font-size:24px;}
+      form.inline{flex-direction:column;}
+      form.inline button,.btn,.btn-ghost{width:100%;text-align:center;}
+    }
+    @media (max-width:600px){
+      body{padding:12px;}
+      th,td{padding:10px;}
+    }
   </style>
 </head>
 <body>
@@ -50,7 +65,7 @@
         {% if order.checkout_at %}<p><strong>Salida:</strong> {{ order.checkout_at|date:"Y-m-d H:i" }}</p>{% endif %}
         <p><strong>Finanzas:</strong> Aprobado ${{ approved_total|floatformat:2 }} · Pagado ${{ paid_total|floatformat:2 }} · Saldo ${{ balance|floatformat:2 }}</p>
         <p class="muted">Asignado a: {{ order.assigned_to|default:"—" }}</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;">
           <a class="btn" href="{{ public_url }}" target="_blank">Estado público</a>
           <a class="btn btn-ghost" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
           {% if wa_link %}<a class="btn" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
@@ -59,9 +74,28 @@
       </div>
       <div class="card">
         <h2>Cliente y equipo</h2>
-        <p><strong>Cliente:</strong> {{ order.device.customer.name }}</p>
-        <p class="muted">Tel: {{ order.device.customer.phone|default:"—" }} · Email: {{ order.device.customer.email|default:"—" }}</p>
-        <p style="margin-top:8px;"><strong>Equipo:</strong> {{ order.device.brand }} {{ order.device.model }} {% if order.device.serial %}<span class="muted">(Serie {{ order.device.serial }})</span>{% endif %}</p>
+        <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
+        <p class="muted">Tel: {{ order_customer.phone|default:"—" }} · Email: {{ order_customer.email|default:"—" }}</p>
+        <div style="margin-top:8px;">
+          <strong>Dispositivos:</strong>
+          {% if order_devices %}
+            <ul style="padding-left:18px;margin:8px 0;">
+              {% for device in order_devices %}
+                <li>
+                  {{ device.brand }} {{ device.model }}
+                  {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="muted">(sin dispositivos asociados)</p>
+          {% endif %}
+        </div>
+        {% if order_customer %}
+          <a class="btn btn-ghost" style="margin-top:10px;" href="{% url 'customer_devices' order_customer.id %}" target="_blank" rel="noopener">
+            Ver todos los dispositivos del cliente
+          </a>
+        {% endif %}
       </div>
       <div class="card">
         <h2>Cotización</h2>
@@ -75,7 +109,7 @@
         {% else %}
           <p class="muted">(sin cotización)</p>
         {% endif %}
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;">
           <a class="btn" href="{% url 'estimate_edit' order.pk %}">Editar</a>
           {% if estimate_has_items and can_send_estimate %}
             <form method="post" action="{% url 'estimate_send' order.pk %}">
@@ -98,22 +132,36 @@
           <input type="number" name="amount" step="0.01" min="0.01" placeholder="Monto" required>
           <input type="text" name="method" maxlength="30" placeholder="Método" required>
           <input type="text" name="reference" maxlength="80" placeholder="Referencia">
+          <select name="device_id">
+            <option value="">Aplica a la orden completa</option>
+            {% for device in order_devices %}
+              <option value="{{ device.id }}">{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</option>
+            {% endfor %}
+          </select>
           <button type="submit">Registrar pago</button>
         </form>
       {% endif %}
       <div style="margin-top:12px;overflow-x:auto;">
         <table>
-          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Dispositivo</th></tr></thead>
           <tbody>
             {% for p in payments %}
               <tr>
                 <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
                 <td>${{ p.amount|floatformat:2 }}</td>
-                <td>{{ p.method|default:"—" }}</td>
-                <td>{{ p.reference|default:"—" }}</td>
+                <td>{{ p.method|default:"-" }}</td>
+                <td>{{ p.reference|default:"-" }}</td>
+                <td>
+                  {% if p.device %}
+                    {{ p.device.brand }} {{ p.device.model }}
+                    {% if p.device.serial %}<div class="muted">Serie: {{ p.device.serial }}</div>{% endif %}
+                  {% else %}
+                    <span class="muted">Orden completa</span>
+                  {% endif %}
+                </td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
+              <tr><td colspan="5" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -133,7 +181,7 @@
       <div class="card">
         <h2>Cambiar estado</h2>
         {% if allowed_next %}
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
             {% for code,label in status_choices %}
               {% if code in allowed_next %}
                 {% if code != 'DONE' or is_superuser %}
@@ -184,6 +232,7 @@
           <input name="reason" placeholder="Motivo (opcional)">
           <button type="submit" class="btn btn-ghost">Registrar</button>
         </form>
+        <div class="table-wrapper">
         <table style="margin-top:12px;">
           <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
           <tbody>
@@ -193,16 +242,18 @@
                 <td>{{ m.item.sku }}</td>
                 <td>{{ m.item.name }}</td>
                 <td>{{ m.delta }}</td>
-                <td>{{ m.reason|default:"—" }}</td>
+                <td>{{ m.reason|default:"-" }}</td>
               </tr>
             {% empty %}
               <tr><td colspan="5" style="text-align:center;padding:18px;">Sin consumos registrados.</td></tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
       <div class="card" style="overflow-x:auto;">
         <h2>Historial</h2>
+        <div class="table-wrapper">
         <table>
           <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
           <tbody>
@@ -210,13 +261,14 @@
               <tr>
                 <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
                 <td>{{ h.get_status_display }}</td>
-                <td>{{ h.author|default:"—" }}</td>
+                <td>{{ h.author|default:"-" }}</td>
               </tr>
             {% empty %}
               <tr><td colspan="3" style="text-align:center;padding:18px;">Sin historial.</td></tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   </main>

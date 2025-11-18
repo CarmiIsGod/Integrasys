@@ -20,7 +20,9 @@ class StatusNotificationTests(TestCase):
     def _create_order(self):
         customer = Customer.objects.create(name="Cliente", email="cliente@example.com", phone="5551112233")
         device = Device.objects.create(customer=customer, brand="Dell", model="XPS", serial="SN-10")
-        return ServiceOrder.objects.create(device=device)
+        order = ServiceOrder.objects.create(customer=customer, device=device)
+        order.devices.set([device])
+        return order
 
     def test_ready_status_sends_email_and_notification(self):
         order = self._create_order()

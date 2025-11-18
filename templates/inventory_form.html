@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
@@ -14,7 +15,12 @@
     .nonfield{color:#b91c1c;margin-bottom:12px}
     button,.btn{display:inline-block;padding:8px 12px;border-radius:6px;border:0;background:#2563eb;color:#fff;text-decoration:none;cursor:pointer}
     .btn.secondary{background:#6b7280}
-    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+    @media(max-width:600px){
+      body{margin:12px;}
+      form{max-width:100%;}
+      button,.btn{width:100%;text-align:center;}
+    }
   </style>
 </head>
 <body>

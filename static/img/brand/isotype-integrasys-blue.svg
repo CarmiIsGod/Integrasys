@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-labelledby="isotypeBlueTitle">
+  <title id="isotypeBlueTitle">Integrasys isotype azul</title>
+  <rect width="160" height="160" fill="#ffffff"/>
+  <path d="M47 28a8 8 0 0 1 6.7 12.6L32.4 80l21.3 39.4a8 8 0 1 1-13.7 7.6L14.7 86.7a13 13 0 0 1 0-12.3L39.9 33.4A8 8 0 0 1 47 28z" fill="#3452ff"/>
+  <path d="M113 28a8 8 0 0 0-6.7 12.6L127.6 80l-21.3 39.4a8 8 0 1 0 13.7 7.6l25.3-40.2a13 13 0 0 0 0-12.3L119.1 33.4A8 8 0 0 0 113 28z" fill="#3452ff"/>
+  <circle cx="80" cy="80" r="12" fill="#3452ff"/>
+</svg>

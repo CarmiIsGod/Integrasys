@@ -27,7 +27,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 import logging
 
-from .forms import ReceptionForm, InventoryItemForm, AttachmentForm
+from .forms import ReceptionForm, ReceptionDeviceFormSet, InventoryItemForm, AttachmentForm
 from .models import (
     Customer,
     Device,
@@ -55,6 +55,7 @@ from .permissions import (
 from .utils import (
     apply_estimate_inventory,
     build_device_label,
+    build_single_device_label,
     resolve_actor_role,
     log_status_snapshot,
     send_order_status_email,
@@ -76,6 +77,24 @@ def _estimate_status_label(estimate):
     if estimate.declined_at:
         return f"Rechazada ({timezone.localtime(estimate.declined_at).strftime('%Y-%m-%d %H:%M')})"
     return "Pendiente"
+
+
+def _order_devices(order):
+    devices = []
+    try:
+        prefetched = order._prefetched_objects_cache  # type: ignore[attr-defined]
+    except AttributeError:
+        prefetched = {}
+    if prefetched and "devices" in prefetched:
+        devices = list(prefetched["devices"])
+    else:
+        try:
+            devices = list(order.devices.all())
+        except Exception:
+            devices = []
+    if not devices and order.device_id:
+        devices = [order.device]
+    return devices
 
 
 def _build_estimate_form_context(request, order, estimate, *, form_items=None, note=None):
@@ -230,6 +249,9 @@ def _ensure_device(customer, *, brand, model, serial, notes):
     if notes and not device.notes:
         device.notes = notes
         updates.append("notes")
+    elif notes and notes.strip() and (device.notes or "").strip() != notes.strip():
+        device.notes = notes
+        updates.append("notes")
     if updates:
         device.save(update_fields=updates)
     return device
@@ -246,9 +268,11 @@ def build_whatsapp_link(phone: str, text: str) -> str:
 
 def public_status(request, token):
     try:
-        order = ServiceOrder.objects.select_related(
-            "device", "device__customer"
-        ).get(token=token)
+        order = (
+            ServiceOrder.objects.select_related("customer")
+            .prefetch_related("devices")
+            .get(token=token)
+        )
     except ServiceOrder.DoesNotExist:
         raise Http404("Orden no encontrada")
     history = order.history.order_by("created_at")
@@ -266,7 +290,10 @@ def qr(request, token):
 
 
 def receipt_pdf(request, token):
-    order = get_object_or_404(ServiceOrder, token=token)
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
+        token=token,
+    )
     public_url = request.build_absolute_uri(reverse("public_status", args=[token]))
 
     try:
@@ -621,17 +648,21 @@ def list_orders(request):
     can_send_estimate = is_reception
     can_export = is_gerencia(request.user)
 
-    qs = ServiceOrder.objects.select_related("device","device__customer").order_by("-checkin_at")
+    qs = (
+        ServiceOrder.objects.select_related("customer")
+        .prefetch_related("devices")
+        .order_by("-checkin_at")
+    )
     if is_technician:
         qs = qs.filter(assigned_to=request.user)
 
     if q:
         qs = qs.filter(
             Q(folio__icontains=q)
-            | Q(device__serial__icontains=q)
-            | Q(device__model__icontains=q)
-            | Q(device__customer__name__icontains=q)
-        )
+            | Q(devices__serial__icontains=q)
+            | Q(devices__model__icontains=q)
+            | Q(customer__name__icontains=q)
+        ).distinct()
     if status:
         qs = qs.filter(status=status)
     if assignee:
@@ -692,17 +723,13 @@ def list_orders(request):
             ["Folio", "Cliente", "Equipo", "Estado", "Tecnico", "Total", "FechaEntrada", "FechaSalida"]
         )
         for order in qs:
-            device = getattr(order, "device", None)
-            customer = getattr(device, "customer", None) if device else None
+            customer = order.get_customer()
             tech_name = order.assigned_to.get_username() if order.assigned_to_id else ""
-            equipment = ""
-            if device:
-                parts = [device.brand or "", device.model or ""]
-                equipment = " ".join(part for part in parts if part).strip()
+            equipment = build_device_label(order)
             writer.writerow(
                 [
                     order.folio,
-                    getattr(customer, "name", ""),
+                    getattr(customer, "name", "") if customer else "",
                     equipment,
                     order.get_status_display(),
                     tech_name,
@@ -723,14 +750,21 @@ def list_orders(request):
             allowed_next = [code for code in allowed_next if code in restricted_statuses]
         o.allowed_next = allowed_next
         public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
+        customer = o.get_customer()
+        customer_name = getattr(customer, "name", "") if customer else ""
+        friendly_name = customer_name or "cliente"
+        o.customer_obj = customer
+        o.device_list = _order_devices(o)
+        o.device_summary = build_device_label(o)
         if o.status == "READY":
-            base = f"Hola {o.device.customer.name}, tu orden {o.folio} est\u00e1 LISTA para recoger."
+            base = f"Hola {friendly_name}, tu orden {o.folio} est\u00e1 LISTA para recoger."
         elif o.status == "DONE":
-            base = f"Hola {o.device.customer.name}, tu orden {o.folio} fue ENTREGADA."
+            base = f"Hola {friendly_name}, tu orden {o.folio} fue ENTREGADA."
         else:
-            base = f"Hola {o.device.customer.name}, tu orden {o.folio} est\u00e1 {o.get_status_display()}."
+            base = f"Hola {friendly_name}, tu orden {o.folio} est\u00e1 {o.get_status_display()}."
         msg = f"{base} Detalle: {public_url}"
-        o.whatsapp_link = build_whatsapp_link(getattr(o.device.customer, "phone", ""), msg)
+        phone_value = getattr(customer, "phone", "") if customer else ""
+        o.whatsapp_link = build_whatsapp_link(phone_value, msg)
 
     context = {
         "page_obj": page_obj,
@@ -756,7 +790,7 @@ def list_orders(request):
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def order_detail(request, pk):
     order = get_object_or_404(
-        ServiceOrder.objects.select_related("device","device__customer"),
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
         pk=pk,
     )
     history = order.history.order_by("-created_at")
@@ -771,14 +805,17 @@ def order_detail(request, pk):
         allowed_next = [code for code in allowed_next if code in {"REV", "WAI", "READY"}]
 
     public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+    customer = order.get_customer()
+    customer_name = getattr(customer, "name", "") if customer else ""
+    friendly_name = customer_name or "cliente"
     if order.status == "READY":
-        base = f"Hola {order.device.customer.name}, tu orden {order.folio} est\u00e1 LISTA para recoger."
+        base = f"Hola {friendly_name}, tu orden {order.folio} est\u00e1 LISTA para recoger."
     elif order.status == "DONE":
-        base = f"Hola {order.device.customer.name}, tu orden {order.folio} fue ENTREGADA."
+        base = f"Hola {friendly_name}, tu orden {order.folio} fue ENTREGADA."
     else:
-        base = f"Hola {order.device.customer.name}, tu orden {order.folio} est\u00e1 {order.get_status_display()}."
+        base = f"Hola {friendly_name}, tu orden {order.folio} est\u00e1 {order.get_status_display()}."
     msg = f"{base} Detalle: {public_url}"
-    wa_link = build_whatsapp_link(getattr(order.device.customer, "phone", ""), msg)
+    wa_link = build_whatsapp_link(getattr(customer, "phone", "") if customer else "", msg)
 
     try:
         estimate = order.estimate
@@ -794,11 +831,12 @@ def order_detail(request, pk):
     can_assign = is_reception
     can_send_estimate = is_reception
 
-    payments = order.payments.select_related("author")
+    payments = order.payments.select_related("author", "device")
     approved_total = order.approved_total
     paid_total = order.paid_total
     balance = order.balance
     can_charge = is_reception and balance > Decimal("0.00")
+    order_devices = _order_devices(order)
 
     return render(
         request,
@@ -826,6 +864,8 @@ def order_detail(request, pk):
             "can_charge": can_charge,
             "is_technician": is_technician,
             "is_superuser": is_superuser,
+            "order_customer": customer,
+            "order_devices": order_devices,
         },
     )
 
@@ -834,7 +874,7 @@ def order_detail(request, pk):
 @require_POST
 def add_payment(request, pk):
     order = get_object_or_404(
-        ServiceOrder.objects.select_related("device", "device__customer"),
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
         pk=pk,
     )
 
@@ -864,6 +904,15 @@ def add_payment(request, pk):
         messages.error(request, "La referencia debe tener maximo 80 caracteres.")
         return redirect("order_detail", pk=pk)
 
+    device_id = (request.POST.get("device_id") or "").strip()
+    order_devices = _order_devices(order)
+    payment_device = None
+    if device_id:
+        payment_device = next((dev for dev in order_devices if str(dev.pk) == device_id), None)
+        if not payment_device:
+            messages.error(request, "Selecciona un dispositivo valido.")
+            return redirect("order_detail", pk=pk)
+
     balance = order.balance
     if balance <= Decimal("0.00"):
         messages.error(request, "La orden no tiene saldo por cobrar.")
@@ -881,6 +930,7 @@ def add_payment(request, pk):
         with transaction.atomic():
             payment = Payment.objects.create(
                 order=order,
+                device=payment_device,
                 amount=amount,
                 method=method,
                 reference=reference,
@@ -906,8 +956,9 @@ def add_payment(request, pk):
             logger.exception("No se pudo cerrar la orden tras dejar saldo en cero")
 
         device_label = build_device_label(order)
+        payment_device_label = build_single_device_label(payment_device) if payment_device else ""
         folio = _resolve_order_folio(order)
-        customer = getattr(order.device, "customer", None)
+        customer = order.get_customer()
         customer_name = getattr(customer, "name", "") if customer else ""
         customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""
 
@@ -928,6 +979,7 @@ def add_payment(request, pk):
                     "reference": reference,
                     "new_balance": balance_display,
                     "device": device_label,
+                    "payment_device": payment_device_label or device_label,
                     "payment_id": payment.id if payment else None,
                 },
             )
@@ -945,6 +997,8 @@ def add_payment(request, pk):
                 ]
                 if reference:
                     body_lines.append(f"Referencia: {reference}")
+                if payment_device_label:
+                    body_lines.append(f"Dispositivo: {payment_device_label}.")
                 body_lines.append(f"Saldo restante: ${balance_display}.")
                 body_lines.append("")
                 body_lines.append("Gracias por tu preferencia.")
@@ -978,7 +1032,7 @@ def add_payment(request, pk):
 @require_POST
 def change_status_auth(request, pk):
     order = get_object_or_404(
-        ServiceOrder.objects.select_related("device__customer"),
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
         pk=pk,
     )
 
@@ -992,7 +1046,7 @@ def change_status_auth(request, pk):
         return redirect("order_detail", pk=order.pk)
 
     device_label = build_device_label(order)
-    customer = getattr(order.device, "customer", None)
+    customer = order.get_customer()
     customer_name = getattr(customer, "name", "") if customer else ""
     order_folio = _resolve_order_folio(order)
 
@@ -1059,10 +1113,13 @@ def change_status_auth(request, pk):
 @group_required(ROLE_TECNICO, ROLE_GERENCIA)
 @require_POST
 def change_status(request, pk):
-    order = get_object_or_404(ServiceOrder, pk=pk)
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
+        pk=pk,
+    )
     target = request.POST.get("target")
     device_label = build_device_label(order)
-    customer = getattr(order.device, "customer", None)
+    customer = order.get_customer()
     customer_name = getattr(customer, "name", "") if customer else ""
     order_folio = _resolve_order_folio(order)
 
@@ -1150,13 +1207,14 @@ def change_status(request, pk):
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def payment_receipt_pdf(request, payment_id):
     payment = get_object_or_404(
-        Payment.objects.select_related("order", "author", "order__device", "order__device__customer"),
+        Payment.objects.select_related("order__customer", "author", "device").prefetch_related("order__devices"),
         pk=payment_id,
     )
     order = payment.order
-    customer = order.device.customer
+    customer = order.get_customer()
     company_name = getattr(settings, "DEFAULT_FROM_EMAIL", "") or "Taller"
     public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+    order_devices = _order_devices(order)
 
     context = {
         "payment": payment,
@@ -1164,6 +1222,7 @@ def payment_receipt_pdf(request, payment_id):
         "customer": customer,
         "company_name": company_name,
         "public_url": public_url,
+        "order_devices": order_devices,
     }
     html = render_to_string("payment_receipt.html", context)
 
@@ -1315,7 +1374,12 @@ def customer_devices(request, pk):
             Device.objects.create(customer=customer, brand=brand, model=model_value, serial=serial_value)
             messages.success(request, "Dispositivo agregado.")
             return redirect("customer_devices", pk=customer.pk)
-    devices = Device.objects.filter(customer=customer).order_by("-id")
+    devices = (
+        Device.objects.filter(customer=customer)
+        .prefetch_related("orders")
+        .annotate(order_count=Count("orders", distinct=True))
+        .order_by("-id")
+    )
     return render(
         request,
         "clientes/customer_devices.html",
@@ -1339,43 +1403,89 @@ def reception_home(request):
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_new_order(request):
-    prefill = {"name": "", "phone": "", "email": "", "brand": "", "model": "", "serial": "", "notes": ""}
+    prefill = {"name": "", "phone": "", "email": "", "notes": ""}
     form = ReceptionForm()
+    device_formset = ReceptionDeviceFormSet(prefix="devices", initial=[{}])
     if request.method == "POST":
         data = request.POST.copy()
         if "name" in data and "customer_name" not in data:
             data["customer_name"] = data.get("name", "")
             data["customer_phone"] = data.get("phone", "")
             data["customer_email"] = data.get("email", "")
-            data["brand"] = data.get("brand", "")
-            data["model"] = data.get("model", "")
-            data["serial"] = data.get("serial", "")
             data["notes"] = data.get("notes", "")
+        if "devices-TOTAL_FORMS" not in data:
+            legacy_brand = data.get("brand", "")
+            legacy_model = data.get("model", "")
+            legacy_serial = data.get("serial", "")
+            legacy_notes = data.get("notes", "")
+            data["devices-TOTAL_FORMS"] = "1"
+            data["devices-INITIAL_FORMS"] = "0"
+            data["devices-MIN_NUM_FORMS"] = "1"
+            max_forms = getattr(ReceptionDeviceFormSet, "max_num", 20) or 20
+            data["devices-MAX_NUM_FORMS"] = str(max_forms)
+            data["devices-0-brand"] = legacy_brand
+            data["devices-0-model"] = legacy_model
+            data["devices-0-serial"] = legacy_serial
+            data["devices-0-notes"] = legacy_notes
         form = ReceptionForm(data)
-        if form.is_valid():
+        device_formset = ReceptionDeviceFormSet(data, prefix="devices")
+        if form.is_valid() and device_formset.is_valid():
             cleaned = form.cleaned_data
             name = cleaned["customer_name"]
             phone = cleaned.get("customer_phone") or ""
             email = cleaned.get("customer_email") or ""
-            brand = cleaned.get("brand") or ""
-            model = cleaned.get("model") or ""
-            serial = cleaned.get("serial") or ""
             notes = cleaned.get("notes") or ""
+
+            device_entries = []
+            for device_form in device_formset:
+                device_cleaned = getattr(device_form, "cleaned_data", None) or {}
+                if device_cleaned.get("DELETE"):
+                    continue
+                brand = device_cleaned.get("brand", "").strip()
+                model = device_cleaned.get("model", "").strip()
+                if not brand and not model:
+                    continue
+                device_entries.append(
+                    {
+                        "brand": brand,
+                        "model": model,
+                        "serial": device_cleaned.get("serial", "").strip(),
+                        "notes": device_cleaned.get("notes", "").strip(),
+                    }
+                )
+
+            if not device_entries:
+                messages.error(request, "Agrega al menos un dispositivo.")
+                prefill = {
+                    "name": data.get("name") or data.get("customer_name", ""),
+                    "phone": data.get("phone") or data.get("customer_phone", ""),
+                    "email": data.get("email") or data.get("customer_email", ""),
+                    "notes": data.get("notes") or "",
+                }
+                context = {"prefill": prefill, "form": form, "device_formset": device_formset}
+                return render(request, "reception/new_order.html", context)
 
             with transaction.atomic():
                 customer = _ensure_customer(name, phone, email)
-                device = _ensure_device(
-                    customer,
-                    brand=brand,
-                    model=model,
-                    serial=serial,
-                    notes=notes,
-                )
+                created_devices = []
+                for entry in device_entries:
+                    created_devices.append(
+                        _ensure_device(
+                            customer,
+                            brand=entry["brand"],
+                            model=entry["model"],
+                            serial=entry["serial"],
+                            notes=entry["notes"],
+                        )
+                    )
+                primary_device = created_devices[0]
                 order = ServiceOrder.objects.create(
-                    device=device,
+                    customer=customer,
+                    device=primary_device,
                     notes=notes,
                     assigned_to=request.user if request.user.is_authenticated else None,
                 )
+                order.devices.set(created_devices)
                 log_status_snapshot(
                     order,
                     author=request.user,
@@ -1416,16 +1526,22 @@ def reception_new_order(request):
             "name": data.get("name") or data.get("customer_name", ""),
             "phone": data.get("phone") or data.get("customer_phone", ""),
             "email": data.get("email") or data.get("customer_email", ""),
-            "brand": data.get("brand", ""),
-            "model": data.get("model", ""),
-            "serial": data.get("serial", ""),
             "notes": data.get("notes") or "",
         }
         for errors in form.errors.values():
             for error in errors:
                 messages.error(request, error)
+        for error in device_formset.non_form_errors():
+            messages.error(request, error)
+        for form_errors in device_formset.errors:
+            for field_errors in form_errors.values():
+                if isinstance(field_errors, (list, tuple)):
+                    for error in field_errors:
+                        messages.error(request, error)
+                else:
+                    messages.error(request, field_errors)
 
-    context = {"prefill": prefill, "form": form}
+    context = {"prefill": prefill, "form": form, "device_formset": device_formset}
     return render(request, "reception/new_order.html", context)
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
@@ -1584,7 +1700,7 @@ def estimate_edit(request, pk):
 @require_POST
 def estimate_send(request, pk):
     order = get_object_or_404(
-        ServiceOrder.objects.select_related("device__customer"),
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
         pk=pk,
     )
     estimate, _ = Estimate.objects.get_or_create(order=order)
@@ -1592,7 +1708,8 @@ def estimate_send(request, pk):
         messages.error(request, "Agrega partidas a la cotizacion antes de enviar.")
         return redirect("estimate_edit", pk=order.pk)
 
-    email = (order.device.customer.email or "").strip()
+    customer = order.get_customer()
+    email = (getattr(customer, "email", "") or "").strip() if customer else ""
     if not email:
         messages.error(request, "El cliente no tiene email registrado.")
         return redirect("estimate_edit", pk=order.pk)
@@ -1613,16 +1730,18 @@ def estimate_send(request, pk):
     context = {
         "order": order,
         "estimate": estimate,
-        "customer": order.device.customer,
+        "customer": customer,
         "items": items,
         "subtotal": subtotal,
         "tax": tax,
         "total": total,
         "public_url": public_url,
+        "order_devices": _order_devices(order),
     }
     subject = f"Cotizacion orden {order.folio}"
+    customer_name = getattr(customer, "name", "") if customer else "cliente"
     plain_message = (
-        f"Hola {order.device.customer.name},\n"
+        f"Hola {customer_name},\n"
         f"Revisa la cotizacion {order.folio}: {public_url}\n"
     )
     html_message = render_to_string("estimate_email.html", context)
@@ -1647,7 +1766,7 @@ def estimate_send(request, pk):
             "url": public_url,
             "order_folio": _resolve_order_folio(order),
             "order": _resolve_order_folio(order),
-            "customer": order.device.customer.name,
+            "customer": customer_name,
         },
     )
 
@@ -1663,9 +1782,8 @@ def estimate_public(request, token):
     estimate = get_object_or_404(
         Estimate.objects.select_related(
             "order",
-            "order__device",
-            "order__device__customer",
-        ).prefetch_related("items"),
+            "order__customer",
+        ).prefetch_related("items", "order__devices"),
         token=token,
     )
 
@@ -1691,10 +1809,12 @@ def estimate_public(request, token):
     declined_at_local = timezone.localtime(estimate.declined_at) if estimate.declined_at else None
     is_pending = not estimate.approved_at and not estimate.declined_at
 
+    customer = estimate.order.get_customer()
     context = {
         "estimate": estimate,
         "order": estimate.order,
-        "customer": estimate.order.device.customer,
+        "customer": customer,
+        "order_devices": _order_devices(estimate.order),
         "items": items,
         "subtotal": subtotal,
         "tax": tax,
@@ -1714,8 +1834,7 @@ def estimate_approve(request, token):
     estimate = get_object_or_404(
         Estimate.objects.select_related(
             "order",
-            "order__device",
-            "order__device__customer",
+            "order__customer",
         ),
         token=token,
     )
@@ -1731,7 +1850,8 @@ def estimate_approve(request, token):
         actor_role = resolve_actor_role(None)
         order.transition_to(ServiceOrder.Status.WAITING_PARTS, author=None, author_role=actor_role)
 
-    customer_email = (order.device.customer.email or "").strip()
+    customer = order.get_customer()
+    customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""
     total_value = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     total_display = format(total_value, ".2f")
     if customer_email:
@@ -1758,7 +1878,7 @@ def estimate_approve(request, token):
             "order_folio": _resolve_order_folio(order),
             "order": _resolve_order_folio(order),
             "folio": order.folio,
-            "customer": order.device.customer.name,
+            "customer": getattr(customer, "name", "") if customer else "",
             "device": build_device_label(order),
             "total": total_display,
             "approved_at": timezone.localtime(now).isoformat(),
@@ -1774,8 +1894,7 @@ def estimate_decline(request, token):
     estimate = get_object_or_404(
         Estimate.objects.select_related(
             "order",
-            "order__device",
-            "order__device__customer",
+            "order__customer",
         ),
         token=token,
     )
@@ -1791,7 +1910,8 @@ def estimate_decline(request, token):
         actor_role = resolve_actor_role(None)
         order.transition_to(ServiceOrder.Status.IN_REVIEW, author=None, author_role=actor_role)
 
-    customer_email = (order.device.customer.email or "").strip()
+    customer = order.get_customer()
+    customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""
     if customer_email:
         body = (
             "Hemos registrado el rechazo de la cotizacion.\n"
@@ -1818,7 +1938,7 @@ def estimate_decline(request, token):
             "order_folio": _resolve_order_folio(order),
             "order": _resolve_order_folio(order),
             "folio": order.folio,
-            "customer": order.device.customer.name,
+            "customer": getattr(customer, "name", "") if customer else "",
             "device": build_device_label(order),
             "total": total_display,
             "declined_at": timezone.localtime(now).isoformat(),

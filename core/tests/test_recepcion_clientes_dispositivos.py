@@ -25,12 +25,27 @@ class ReceptionCustomerDeviceTests(TestCase):
             "customer_name": "Cliente Demo",
             "customer_phone": "5551234567",
             "customer_email": "demo@example.com",
-            "brand": "Dell",
-            "model": "XPS 13",
-            "serial": "sn-001",
-            "notes": "No enciende",
+            "notes": "Datos generales",
+            "devices-TOTAL_FORMS": "1",
+            "devices-INITIAL_FORMS": "0",
+            "devices-MIN_NUM_FORMS": "1",
+            "devices-MAX_NUM_FORMS": "20",
+            "devices-0-brand": "Dell",
+            "devices-0-model": "XPS 13",
+            "devices-0-serial": "sn-001",
+            "devices-0-notes": "No enciende",
         }
-        base.update(overrides)
+        legacy_map = {
+            "brand": "devices-0-brand",
+            "model": "devices-0-model",
+            "serial": "devices-0-serial",
+            "device_notes": "devices-0-notes",
+        }
+        normalized = {}
+        for key, value in overrides.items():
+            mapped = legacy_map.get(key, key)
+            normalized[mapped] = value
+        base.update(normalized)
         return base
 
     def test_creates_customer_and_device(self):
@@ -65,7 +80,12 @@ class ReceptionCustomerDeviceTests(TestCase):
     def test_reuses_device_by_serial(self):
         customer = Customer.objects.create(name="Cliente Demo", phone="5553332222", email="demo@acme.com")
         device = Device.objects.create(customer=customer, brand="HP", model="Pavilion", serial="abc-999", notes="")
-        payload = self._payload(customer_email="demo@acme.com", customer_phone="5553332222", serial="ABC-999", notes="Nueva falla")
+        payload = self._payload(
+            customer_email="demo@acme.com",
+            customer_phone="5553332222",
+            serial="ABC-999",
+            device_notes="Nueva falla",
+        )
         response = self.client.post(self.url, payload)
         self.assertEqual(response.status_code, 302)
         order = ServiceOrder.objects.latest("id")
@@ -84,3 +104,20 @@ class ReceptionCustomerDeviceTests(TestCase):
             context_messages = list(response.context["messages"])
         self.assertTrue(context_messages)
         self.assertTrue(any("telefono" in m.message.lower() for m in context_messages))
+
+    def test_customer_devices_view_lists_orders(self):
+        response = self.client.post(self.url, self._payload())
+        self.assertEqual(response.status_code, 302)
+        order = ServiceOrder.objects.latest("id")
+        customer = order.device.customer
+        device = order.device
+        second = ServiceOrder.objects.create(customer=customer, device=device)
+        order.devices.set([device])
+        second.devices.set([device])
+
+        url = reverse("customer_devices", args=[customer.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, device.brand)
+        self.assertContains(resp, order.folio)
+        self.assertContains(resp, second.folio)

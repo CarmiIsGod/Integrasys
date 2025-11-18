@@ -1,19 +1,29 @@
-﻿{% with request.path as current_path %}
+{% load static %}
+{% with request.path as current_path %}
   <style>
-    .reception-nav {background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;font-family:Segoe UI,Arial,sans-serif;}
+    .reception-nav {background:#1d4ed8;color:#fff;padding:12px 18px;border-radius:12px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:Segoe UI,Arial,sans-serif;box-shadow:0 10px 25px rgba(15,23,42,0.15);}
     .reception-nav__links {display:flex;gap:10px;flex-wrap:wrap;}
-    .reception-nav__links a {color:#e0e7ff;padding:6px 12px;border-radius:999px;text-decoration:none;transition:background .2s;color .2s;font-weight:500;}
-    .reception-nav__links a:hover {background:rgba(255,255,255,0.2);}
+    .reception-nav__links a {color:#e0e7ff;padding:6px 12px;border-radius:999px;text-decoration:none;transition:background .2s,color .2s;font-weight:500;}
+    .reception-nav__links a:hover {background:rgba(255,255,255,0.18);}
     .reception-nav__links a.is-active {background:rgba(255,255,255,0.35);color:#0f172a;}
-    .reception-nav__logo {display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;}
+    .reception-nav__logo {display:flex;align-items:center;gap:12px;font-weight:600;font-size:15px;}
+    .reception-nav__logo img {display:block;max-height:36px;width:auto;object-fit:contain;}
+    .reception-nav__logo span{font-size:18px;font-weight:600;color:#fff;}
     .reception-nav__bell {position:relative;display:inline-flex;align-items:center;gap:6px;}
     .reception-nav__badge {position:absolute;top:2px;right:6px;background:#dc2626;color:#fff;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:700;line-height:1.4;}
     .reception-nav__label {font-size:14px;}
+    @media (max-width: 768px) {
+      .reception-nav {flex-direction:column;align-items:flex-start;border-radius:0;margin-left:-24px;margin-right:-24px;padding:16px 24px;}
+      .reception-nav__links {width:100%;justify-content:flex-start;gap:6px;}
+      .reception-nav__links a {font-size:14px;padding:6px 10px;}
+      .reception-nav__logo {width:100%;justify-content:space-between;}
+      .reception-nav__logo img {max-height:30px;}
+    }
   </style>
   <div class="reception-nav">
     <div class="reception-nav__logo">
-      <span style="background:#fff;color:#1d4ed8;border-radius:6px;padding:4px 8px;font-weight:700;">IN</span>
-      <span>Integrasys</span>
+      <img src="{% static 'img/brand/imago-blanco.png' %}" alt="Integrasys">
+      <span>Recepción</span>
     </div>
     <nav class="reception-nav__links">
       <a href="{% url 'reception_home' %}" class="{% if current_path == '/recepcion/' %}is-active{% endif %}">Inicio</a>

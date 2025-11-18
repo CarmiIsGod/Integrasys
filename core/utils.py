@@ -33,10 +33,9 @@ def log_status_snapshot(order, *, author=None, previous_status="", new_status=No
     )
 
 
-def build_device_label(order):
-    device = getattr(order, "device", None)
+def _format_device(device):
     if not device:
-        return "Equipo"
+        return ""
     parts = []
     for attr in ("brand", "model"):
         value = getattr(device, attr, "")
@@ -54,6 +53,47 @@ def build_device_label(order):
     try:
         return str(device)
     except Exception:
+        return ""
+
+
+def _gather_order_devices(order):
+    devices = []
+    prefetched = getattr(order, "_prefetched_objects_cache", {})
+    if prefetched and "devices" in prefetched:
+        devices = list(prefetched["devices"])
+    else:
+        try:
+            devices = list(order.devices.all())
+        except Exception:
+            devices = []
+    if not devices and getattr(order, "device", None):
+        devices = [order.device]
+    return devices
+
+
+def build_device_label(order):
+    devices = _gather_order_devices(order)
+    if not devices:
+        return "Equipo"
+    labels = [_format_device(device) for device in devices]
+    labels = [label for label in labels if label]
+    if not labels:
+        try:
+            return str(devices[0])
+        except Exception:
+            return "Equipo"
+    if len(labels) == 1:
+        return labels[0]
+    return ", ".join(labels)
+
+
+def build_single_device_label(device):
+    label = _format_device(device)
+    if label:
+        return label
+    try:
+        return str(device)
+    except Exception:
         return "Equipo"
 
 
@@ -66,7 +106,7 @@ def send_order_status_email(
     device_label="",
     extra_context=None,
 ):
-    customer = getattr(order.device, "customer", None)
+    customer = order.get_customer() if hasattr(order, "get_customer") else None
     customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""
     customer_name = getattr(customer, "name", "") if customer else ""
     resolved_label = device_label or build_device_label(order)

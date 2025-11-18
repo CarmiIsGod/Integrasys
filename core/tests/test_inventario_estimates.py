@@ -22,7 +22,8 @@ class EstimateInventoryTests(TestCase):
         self.client.force_login(self.user)
         customer = Customer.objects.create(name="Cliente", phone="5550001234", email="c@example.com")
         device = Device.objects.create(customer=customer, brand="Dell", model="XPS", serial="SN-22")
-        self.order = ServiceOrder.objects.create(device=device)
+        self.order = ServiceOrder.objects.create(customer=customer, device=device)
+        self.order.devices.set([device])
 
     def _prepare_estimate(self, *, qty, stock):
         item = InventoryItem.objects.create(sku="KIT-01", name="Kit", qty=stock)
