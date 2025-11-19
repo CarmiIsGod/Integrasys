@@ -1,69 +1,88 @@
-﻿<!doctype html>
+﻿{% load static %}
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Cotizacion {{ order.folio }}</title>
+  <title>Cotización {{ order.folio }}</title>
   <style>
-    body{font-family:DejaVu Sans,Helvetica,Arial,sans-serif;font-size:12px;color:#111827;margin:0;padding:32px}
-    h1{font-size:22px;margin:0 0 12px 0}
-    h2{font-size:16px;margin:16px 0 8px 0}
-    p{margin:4px 0}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border:1px solid #d1d5db;padding:8px;text-align:left}
-    th{background:#e5e7eb;font-weight:600}
-    .totals{margin-top:16px;border:1px solid #d1d5db;border-radius:6px;padding:12px}
-    .badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;color:#065f46;background:#d1fae5;margin-left:8px}
-    .muted{color:#6b7280}
+    @page { margin: 18mm 16mm; }
+    body{font-family:"DejaVu Sans","Segoe UI",Arial,sans-serif;font-size:11pt;color:#1f2937;background:#f5f6fb;margin:0;padding:0;}
+    .page{max-width:760px;margin:0 auto;padding:28px 32px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;}
+    .brand{text-align:center;margin-bottom:14px;}
+    .brand img{height:64px;width:auto;display:block;margin:0 auto 4px;}
+    .brand .subtitle{text-transform:uppercase;letter-spacing:2px;color:#9ca3af;font-size:12pt;}
+    h1{font-size:20pt;margin:12px 0;}
+    h2{font-size:14pt;margin:18px 0 8px;letter-spacing:1px;text-transform:uppercase;color:#374151;}
+    table{width:100%;border-collapse:collapse;margin-top:8px;}
+    th,td{border:1px solid #e5e7eb;padding:10px;text-align:left;font-size:10.5pt;}
+    th{background:#f3f4f6;font-weight:600;color:#111827;}
+    .badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:10pt;font-weight:600;color:#065f46;background:#d1fae5;margin-left:8px;}
+    .badge.danger{color:#991b1b;background:#fee2e2;}
+    .devices{list-style:none;margin:6px 0 0 0;padding:0;border:1px solid #e5e7eb;border-radius:12px;}
+    .devices li{padding:8px 12px;border-bottom:1px solid #f1f5f9;}
+    .devices li:last-child{border-bottom:none;}
+    .totals{margin-top:18px;border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#f9fafb;}
+    .totals p{margin:4px 0;font-size:11pt;}
+    .muted{color:#6b7280;font-size:10pt;}
   </style>
 </head>
 <body>
-  <h1>Cotizacion {{ order.folio }}{% if estimate.approved_at %}<span class="badge">Aprobada</span>{% elif estimate.declined_at %}<span class="badge" style="background:#fee2e2;color:#991b1b">Rechazada</span>{% endif %}</h1>
-  <p><b>Cliente:</b> {{ customer.name|default:order.customer.name }}</p>
-  <div><b>Equipos:</b>
-    {% if order_devices %}
-      <ul style="margin:4px 0 0 16px;padding:0;">
-        {% for device in order_devices %}
-          <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+  <div class="page">
+    <div class="brand">
+      <img src="{% static 'img/brand/logo-company-color.png' %}" alt="Integrasys">
+      <div class="subtitle">Cotización</div>
+    </div>
+
+    <h1>Cotización {{ order.folio }}
+      {% if estimate.approved_at %}<span class="badge">Aprobada</span>{% elif estimate.declined_at %}<span class="badge danger">Rechazada</span>{% endif %}
+    </h1>
+    <p><strong>Cliente:</strong> {{ customer.name|default:order.customer.name }}</p>
+    <div><strong>Equipos:</strong>
+      {% if order_devices %}
+        <ul class="devices">
+          {% for device in order_devices %}
+            <li>{{ device.brand }} {{ device.model }}{% if device.serial %} (Serie {{ device.serial }}){% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <span class="muted">(sin dispositivos)</span>
+      {% endif %}
+    </div>
+    <p><strong>Fecha:</strong> {{ estimate.updated_at|date:"Y-m-d H:i" }}</p>
+    {% if public_url %}<p class="muted">Vista en línea: {{ public_url }}</p>{% endif %}
+
+    <h2>Partidas</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Descripción</th>
+          <th style="width:80px">Cantidad</th>
+          <th style="width:100px">Unitario</th>
+          <th style="width:110px">Importe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.description }}</td>
+          <td>{{ item.qty }}</td>
+          <td>${{ item.unit_price|floatformat:2 }}</td>
+          <td>${{ item.line_total|floatformat:2 }}</td>
+        </tr>
         {% endfor %}
-      </ul>
-    {% else %}
-      <span class="muted">(sin dispositivos)</span>
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <p><strong>Subtotal:</strong> ${{ subtotal|floatformat:2 }}</p>
+      <p><strong>IVA:</strong> ${{ tax|floatformat:2 }}</p>
+      <p><strong>Total:</strong> ${{ total|floatformat:2 }}</p>
+    </div>
+
+    {% if note %}
+    <h2>Nota</h2>
+    <p style="white-space:pre-wrap">{{ note }}</p>
     {% endif %}
   </div>
-  <p><b>Fecha:</b> {{ estimate.updated_at|date:"Y-m-d H:i" }}</p>
-  {% if public_url %}<p class="muted">Vista en linea: {{ public_url }}</p>{% endif %}
-
-  <h2>Partidas</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Descripcion</th>
-        <th style="width:80px">Cantidad</th>
-        <th style="width:100px">Unitario</th>
-        <th style="width:100px">Importe</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in items %}
-      <tr>
-        <td>{{ item.description }}</td>
-        <td>{{ item.qty }}</td>
-        <td>${{ item.unit_price|floatformat:2 }}</td>
-        <td>${{ item.line_total|floatformat:2 }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <div class="totals">
-    <p><b>Subtotal:</b> ${{ subtotal|floatformat:2 }}</p>
-    <p><b>IVA:</b> ${{ tax|floatformat:2 }}</p>
-    <p><b>Total:</b> ${{ total|floatformat:2 }}</p>
-  </div>
-
-  {% if note %}
-  <h2>Nota</h2>
-  <p style="white-space:pre-wrap">{{ note }}</p>
-  {% endif %}
 </body>
 </html>

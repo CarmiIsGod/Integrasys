@@ -1,53 +1,82 @@
+﻿{% load static %}
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>Recibo de pago - {{ order.folio }}</title>
   <style>
-    body { font-family: DejaVu Sans, sans-serif; font-size: 12pt; }
-    h1 { font-size: 16pt; margin: 0 0 6pt 0; }
-    .header { border-bottom: 1px solid #000; padding-bottom: 6pt; margin-bottom: 12pt; }
-    .label { font-weight: bold; }
-    .muted { color: #555; font-size: 10pt; }
-    table { width: 100%; border-collapse: collapse; }
-    td { vertical-align: top; padding: 4pt 0; }
+    @page { margin: 20mm 18mm; }
+    body{font-family:"DejaVu Sans","Segoe UI",Arial,sans-serif;font-size:11pt;color:#1f2937;background:#f7f8fb;margin:0;padding:0;}
+    .page{max-width:700px;margin:0 auto;padding:28px 32px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;}
+    .brand{text-align:center;margin-bottom:20px;}
+    .brand img{height:70px;width:auto;display:block;margin:0 auto 6px;}
+    .brand .subtitle{text-transform:uppercase;letter-spacing:2px;color:#9ca3af;font-size:12pt;}
+    .summary{display:flex;justify-content:space-between;gap:20px;border:1px solid #e5e7eb;border-radius:16px;padding:18px;margin-bottom:24px;}
+    .summary__block p{margin:0 0 6px;font-size:11pt;}
+    .summary__block p strong{display:inline-block;width:110px;color:#111827;}
+    .section{margin-top:18px;}
+    .section h2{margin:0 0 8px;text-transform:uppercase;font-size:13pt;letter-spacing:1px;color:#374151;}
+    .devices{list-style:none;margin:0;padding:0;border:1px solid #e5e7eb;border-radius:12px;}
+    .devices li{padding:8px 12px;border-bottom:1px solid #f1f5f9;}
+    .devices li:last-child{border-bottom:none;}
+    .footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;text-align:center;font-size:10pt;color:#6b7280;}
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>Recibo de pago</h1>
-    <div><span class="label">Empresa:</span> {{ company_name|default:"Taller" }}</div>
-    <div><span class="label">Folio orden:</span> {{ order.folio }}</div>
-    <div><span class="label">Fecha pago:</span> {{ payment.created_at|date:"Y-m-d H:i" }}</div>
+  <div class="page">
+    <header class="brand">
+      {% if logo_b64 %}
+      <img src="data:image/svg+xml;base64,{{ logo_b64 }}" alt="Integrasys">
+      {% else %}
+      <img src="{% static 'img/brand/logo-integrasys-color.svg' %}" alt="Integrasys">
+      {% endif %}
+      <div class="subtitle">Recibo de pago</div>
+    </header>
+
+    <section class="summary">
+      <div class="summary__block">
+        <p><strong>Empresa:</strong> {{ company_name|default:"Integrasys" }}</p>
+        <p><strong>Orden:</strong> {{ order.folio }}</p>
+        <p><strong>Fecha pago:</strong> {{ payment.created_at|date:"Y-m-d H:i" }}</p>
+      </div>
+      <div class="summary__block">
+        <p><strong>Monto:</strong> {{ payment.amount }}</p>
+        <p><strong>Método:</strong> {{ payment.method|default:"—" }}</p>
+        <p><strong>Referencia:</strong> {{ payment.reference|default:"—" }}</p>
+        <p><strong>Atendió:</strong> {{ payment.author|default:"" }}</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Cliente</h2>
+      <p><strong>Nombre:</strong> {{ customer.name|default:"-" }}</p>
+    </section>
+
+    <section class="section">
+      <h2>Equipos</h2>
+      {% if order_devices %}
+        <ul class="devices">
+          {% for device in order_devices %}
+            <li>{{ device.brand }} {{ device.model }}{% if device.serial %} (Serie {{ device.serial }}){% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="footer" style="margin:0;border:none;padding:0;text-align:left;color:#6b7280;">(sin dispositivos)</p>
+      {% endif %}
+      {% if payment.device %}
+        <p style="margin-top:10px;"><strong>Pago aplicado a:</strong> {{ payment.device.brand }} {{ payment.device.model }}{% if payment.device.serial %} ({{ payment.device.serial }}){% endif %}</p>
+      {% endif %}
+    </section>
+
+    {% if public_url %}
+    <section class="section" style="font-size:10pt;color:#6b7280;">
+      Detalle de la orden: {{ public_url }}
+    </section>
+    {% endif %}
+
+    <footer class="footer">
+      Gracias por tu pago.
+    </footer>
   </div>
-
-  <table>
-    <tr>
-      <td>
-        <div><span class="label">Cliente:</span> {{ customer.name|default:"-" }}</div>
-        <div><span class="label">Dispositivos:</span>
-          {% if order_devices %}
-            <ul style="margin:4pt 0 0 16pt;padding:0;">
-              {% for device in order_devices %}
-                <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <span class="muted">(sin dispositivos)</span>
-          {% endif %}
-        </div>
-        {% if payment.device %}
-          <div><span class="label">Pago aplicado a:</span> {{ payment.device.brand }} {{ payment.device.model }}{% if payment.device.serial %} ({{ payment.device.serial }}){% endif %}</div>
-        {% endif %}
-      </td>
-    </tr>
-  </table>
-
-  <p><span class="label">Monto:</span> {{ payment.amount }}<br>
-     <span class="label">M&eacute;todo:</span> {{ payment.method|default:"&mdash;" }}<br>
-     <span class="label">Referencia:</span> {{ payment.reference|default:"&mdash;" }}<br>
-     <span class="label">Atendi&oacute;:</span> {{ payment.author|default:"" }}</p>
-
-  <p class="muted">Detalle de la orden: {{ public_url }}</p>
 </body>
 </html>

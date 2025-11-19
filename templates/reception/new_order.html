@@ -13,6 +13,15 @@
     .muted{color:#64748b;font-size:14px;margin:0;}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
+    .customer-search-results{border:1px solid #cbd5f5;border-radius:10px;margin-top:8px;display:flex;flex-direction:column;gap:4px;padding:6px;background:#f8fbff;max-height:220px;overflow:auto;}
+    .customer-search-results[hidden]{display:none;}
+    .customer-search-result{display:flex;flex-direction:column;align-items:flex-start;border:1px solid transparent!important;background:#f8fafc!important;color:#0f172a!important;text-align:left;padding:8px;border-radius:8px;cursor:pointer;gap:2px;font-size:14px;}
+    .customer-search-result:hover{background:#e0edff!important;border-color:#bfdbfe!important;color:#0f172a!important;}
+    .customer-search-result.is-empty{cursor:default;color:#64748b;}
+    .customer-search-result strong{color:#1d4ed8;margin-bottom:2px;}
+    .customer-search-result span{color:#475569;font-size:12px;}
+    .customer-search-selected{display:inline-flex;align-items:center;gap:8px;background:#dcfce7;color:#166534;padding:6px 10px;border-radius:999px;font-size:13px;margin-top:8px;}
+    .customer-search-selected[hidden]{display:none;}
     label{display:block;font-weight:600;margin-bottom:4px;color:#1e293b;}
     input,textarea{width:100%;padding:9px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;box-sizing:border-box;}
     textarea{resize:vertical;min-height:120px;}
@@ -64,13 +73,21 @@
       <div class="grid">
         <div class="card">
           <h2>Cliente</h2>
+          <label>Buscar cliente existente</label>
+          <input id="customer-search" type="text" placeholder="Nombre, telefono o correo..." data-search-url="{% url 'reception_customer_search' %}">
+          <div id="customer-search-results" class="customer-search-results" hidden></div>
+          <div id="customer-selected-pill" class="customer-search-selected" {% if not prefill.customer_id %}hidden{% endif %}>
+            Cliente existente seleccionado
+          </div>
+          <input type="hidden" name="customer_id" id="customer-id" value="{{ prefill.customer_id }}">
+          <p class="muted" style="margin-top:8px;">Selecciona un cliente existente o captura uno nuevo abajo.</p>
           <label>Nombre*</label>
           <input name="name" value="{{ prefill.name }}" required placeholder="Nombre completo">
-          <label style="margin-top:12px;">Teléfono</label>
+          <label style="margin-top:12px;">Tel&eacute;fono</label>
           <input name="phone" value="{{ prefill.phone }}" placeholder="Opcional">
           <label style="margin-top:12px;">Email</label>
           <input type="email" name="email" value="{{ prefill.email }}" placeholder="cliente@correo.com">
-          <p class="muted" style="margin-top:10px;">Si los datos coinciden con un cliente existente se reutilizarán automáticamente.</p>
+          <p class="muted" style="margin-top:10px;">Si los datos coinciden con un cliente existente se reutilizar&aacute;n autom&aacute;ticamente.</p>
         </div>
         <div class="card">
           <h2>Notas generales</h2>
@@ -83,9 +100,9 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
           <div>
             <h2>Dispositivos</h2>
-            <p class="muted" style="margin:4px 0 0;">Agrega cada dispositivo (máx. {{ device_formset.max_num }} por orden).</p>
+            <p class="muted" style="margin:4px 0 0;">Agrega cada dispositivo (m&aacute;x. {{ device_formset.max_num }} por orden).</p>
           </div>
-          <button type="button" class="btn btn-ghost" id="add-device-btn">Añadir dispositivo</button>
+          <button type="button" class="btn btn-ghost" id="add-device-btn">A&ntilde;adir dispositivo</button>
         </div>
         {{ device_formset.management_form }}
         <div id="device-formset" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
@@ -113,7 +130,7 @@
                   {% for error in form.serial.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
                 </div>
               </div>
-              <label style="margin-top:12px;display:block;">Descripción / Falla</label>
+              <label style="margin-top:12px;display:block;">Descripci&oacute;n / Falla</label>
               {{ form.notes }}
               {% for error in form.notes.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
               {% if form.DELETE %}
@@ -149,7 +166,7 @@
             {{ device_formset.empty_form.serial }}
           </div>
         </div>
-        <label style="margin-top:12px;display:block;">Descripción / Falla</label>
+        <label style="margin-top:12px;display:block;">Descripci&oacute;n / Falla</label>
         {{ device_formset.empty_form.notes }}
         {% if device_formset.empty_form.DELETE %}
           <span class="device-delete-field">{{ device_formset.empty_form.DELETE }}</span>
@@ -159,6 +176,151 @@
   </main>
   <script>
     document.addEventListener("DOMContentLoaded", function(){
+      const searchInput = document.getElementById("customer-search");
+      if (searchInput) {
+        const searchUrl = searchInput.dataset.searchUrl || "";
+        const resultsBox = document.getElementById("customer-search-results");
+        const customerIdInput = document.getElementById("customer-id");
+        const selectionPill = document.getElementById("customer-selected-pill");
+        const nameInput = document.querySelector('input[name="name"]');
+        const phoneInput = document.querySelector('input[name="phone"]');
+        const emailInput = document.querySelector('input[name="email"]');
+        let debounceTimer = null;
+        let lastQuery = "";
+        let fillingFromSelection = false;
+
+        function hideResults(){
+          if (!resultsBox) return;
+          resultsBox.innerHTML = "";
+          resultsBox.hidden = true;
+        }
+
+        function showSelection(labelText){
+          if (!selectionPill) return;
+          selectionPill.textContent = labelText || "Cliente existente seleccionado";
+          selectionPill.hidden = false;
+        }
+
+        function clearSelection(){
+          if (customerIdInput) {
+            customerIdInput.value = "";
+          }
+          if (selectionPill) {
+            selectionPill.hidden = true;
+          }
+        }
+
+        function renderEmpty(){
+          if (!resultsBox) return;
+          resultsBox.innerHTML = "";
+          const empty = document.createElement("div");
+          empty.className = "customer-search-result is-empty";
+          empty.textContent = "Sin coincidencias, captura un cliente nuevo.";
+          resultsBox.appendChild(empty);
+          resultsBox.hidden = false;
+        }
+
+        function renderResults(items){
+          if (!resultsBox) return;
+          resultsBox.innerHTML = "";
+          if (!items.length){
+            renderEmpty();
+            return;
+          }
+          const fragment = document.createDocumentFragment();
+          items.forEach((item) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "customer-search-result";
+            button.dataset.id = item.id;
+            button.dataset.name = item.name || "";
+            button.dataset.phone = item.phone || "";
+            button.dataset.email = item.email || "";
+            button.dataset.label = item.label || "";
+            const title = document.createElement("strong");
+            title.textContent = item.name || "Sin nombre";
+            const meta = document.createElement("span");
+            meta.textContent = [item.phone || "Sin telefono", item.email || "Sin correo"].filter(Boolean).join(" | ");
+            button.appendChild(title);
+            button.appendChild(meta);
+            fragment.appendChild(button);
+          });
+          resultsBox.appendChild(fragment);
+          resultsBox.hidden = false;
+        }
+
+        async function fetchResults(query){
+          if (!searchUrl) return;
+          try {
+            const response = await fetch(`${searchUrl}?q=${encodeURIComponent(query)}`, {headers: {"X-Requested-With": "XMLHttpRequest"}});
+            if (!response.ok) throw new Error("search failed");
+            const payload = await response.json();
+            if (query !== lastQuery) return;
+            const items = Array.isArray(payload.results) ? payload.results : [];
+            renderResults(items);
+          } catch (error) {
+            console.error("Error buscando clientes", error);
+          }
+        }
+
+        function handleResultClick(event){
+          const item = event.target.closest(".customer-search-result");
+          if (!item || item.classList.contains("is-empty")) return;
+          event.preventDefault();
+          if (customerIdInput) {
+            customerIdInput.value = item.dataset.id || "";
+          }
+          fillingFromSelection = true;
+          if (nameInput) nameInput.value = item.dataset.name || "";
+          if (phoneInput) phoneInput.value = item.dataset.phone || "";
+          if (emailInput) emailInput.value = item.dataset.email || "";
+          fillingFromSelection = false;
+          const label = item.dataset.label || item.dataset.name || "Cliente existente seleccionado";
+          showSelection(label);
+          searchInput.value = label;
+          hideResults();
+        }
+
+        if (resultsBox) {
+          resultsBox.addEventListener("click", handleResultClick);
+        }
+
+        [nameInput, phoneInput, emailInput].forEach((input) => {
+          if (!input) return;
+          input.addEventListener("input", () => {
+            if (fillingFromSelection) return;
+            clearSelection();
+          });
+        });
+
+        searchInput.addEventListener("input", (event) => {
+          const value = event.target.value.trim();
+          clearSelection();
+          if (value.length < 2){
+            lastQuery = "";
+            hideResults();
+            return;
+          }
+          lastQuery = value;
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            fetchResults(value);
+          }, 250);
+        });
+
+        document.addEventListener("click", (event) => {
+          if (!resultsBox) return;
+          if (event.target === searchInput || resultsBox.contains(event.target)) {
+            return;
+          }
+          hideResults();
+        });
+
+        if (customerIdInput && customerIdInput.value) {
+          showSelection(nameInput && nameInput.value ? `Cliente: ${nameInput.value}` : "Cliente existente seleccionado");
+        }
+      }
+
       const container = document.getElementById("device-formset");
       if (!container) return;
       const addButton = document.getElementById("add-device-btn");
@@ -215,7 +377,7 @@
         if (!template || !totalInput) return;
         const currentTotal = parseInt(totalInput.value || "0", 10);
         if (currentTotal >= maxForms){
-          alert("Alcanzaste el máximo de dispositivos permitidos.");
+          alert("Alcanzaste el m&aacute;ximo de dispositivos permitidos.");
           return;
         }
         const html = template.innerHTML.replace(/__prefix__/g, currentTotal).replace(/__NUM__/g, currentTotal + 1);

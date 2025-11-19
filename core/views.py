@@ -1,4 +1,4 @@
-from django.http import HttpResponse, Http404
+from django.http import HttpResponse, Http404, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
@@ -167,41 +167,7 @@ def _record_status_update(order, *, channel="status_change", ok=True, extra_payl
         logger.exception("Error registrando notificacion de estado")
 
 
-def _find_customer_match(*, name, phone, email):
-    """Return the first customer that matches by email or phone."""
-    qs = Customer.objects.all()
-    lookups = []
-    if email:
-        lookups.append({"email__iexact": email})
-    if phone:
-        lookups.append({"phone__iexact": phone})
-    if name and phone:
-        lookups.append({"name__iexact": name, "phone__iexact": phone})
-    if name and email:
-        lookups.append({"name__iexact": name, "email__iexact": email})
-    for lookup in lookups:
-        match = qs.filter(**lookup).order_by("id").first()
-        if match:
-            return match
-    return None
-
-
-def _ensure_customer(name, phone, email):
-    customer = _find_customer_match(name=name, phone=phone, email=email)
-    if customer:
-        fields = []
-        if name and not customer.name:
-            customer.name = name
-            fields.append("name")
-        if phone and not customer.phone:
-            customer.phone = phone
-            fields.append("phone")
-        if email and not customer.email:
-            customer.email = email
-            fields.append("email")
-        if fields:
-            customer.save(update_fields=fields)
-        return customer
+def _create_customer(name, phone, email):
     return Customer.objects.create(name=name, phone=phone or "", email=email or "")
 
 
@@ -257,6 +223,21 @@ def _ensure_device(customer, *, brand, model, serial, notes):
     return device
 
 
+_PDF_LOGO_CACHE = None
+
+
+def _get_pdf_logo():
+    global _PDF_LOGO_CACHE
+    if _PDF_LOGO_CACHE is not None:
+        return _PDF_LOGO_CACHE
+    logo_file = Path(settings.BASE_DIR) / "static" / "img" / "brand" / "logo-integrasys-color.svg"
+    try:
+        _PDF_LOGO_CACHE = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+    except Exception:
+        _PDF_LOGO_CACHE = ""
+    return _PDF_LOGO_CACHE
+
+
 def build_whatsapp_link(phone: str, text: str) -> str:
     digits = re.sub(r"\D", "", phone or "")
     if not digits:
@@ -303,9 +284,11 @@ def receipt_pdf(request, token):
     except Exception:
         qr_b64 = ""
 
+    logo_b64 = _get_pdf_logo()
+
     html = render_to_string(
         "receipt.html",
-        {"order": order, "qr_b64": qr_b64, "public_url": public_url},
+        {"order": order, "qr_b64": qr_b64, "public_url": public_url, "logo_b64": logo_b64},
     )
 
     pdf_io = BytesIO()
@@ -1223,6 +1206,7 @@ def payment_receipt_pdf(request, payment_id):
         "company_name": company_name,
         "public_url": public_url,
         "order_devices": order_devices,
+        "logo_b64": _get_pdf_logo(),
     }
     html = render_to_string("payment_receipt.html", context)
 
@@ -1402,8 +1386,43 @@ def reception_home(request):
 
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+def reception_customer_search(request):
+    query = (request.GET.get("q") or "").strip()
+    if not query:
+        return JsonResponse({"results": []})
+    filters = (
+        Q(name__icontains=query)
+        | Q(email__icontains=query)
+        | Q(phone__icontains=query)
+    )
+    customers = (
+        Customer.objects.filter(filters)
+        .order_by("name", "id")
+        .only("id", "name", "email", "phone")[:10]
+    )
+    results = []
+    for customer in customers:
+        label_parts = [
+            customer.name or "Sin nombre",
+            customer.phone or "Sin teléfono",
+            customer.email or "Sin correo",
+        ]
+        results.append(
+            {
+                "id": customer.pk,
+                "name": customer.name,
+                "phone": customer.phone,
+                "email": customer.email,
+                "label": " · ".join(label_parts),
+            }
+        )
+    return JsonResponse({"results": results})
+
+
+@login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_new_order(request):
-    prefill = {"name": "", "phone": "", "email": "", "notes": ""}
+    prefill = {"name": "", "phone": "", "email": "", "notes": "", "customer_id": ""}
     form = ReceptionForm()
     device_formset = ReceptionDeviceFormSet(prefix="devices", initial=[{}])
     if request.method == "POST":
@@ -1429,6 +1448,7 @@ def reception_new_order(request):
             data["devices-0-notes"] = legacy_notes
         form = ReceptionForm(data)
         device_formset = ReceptionDeviceFormSet(data, prefix="devices")
+        customer_id_value = (data.get("customer_id") or "").strip()
         if form.is_valid() and device_formset.is_valid():
             cleaned = form.cleaned_data
             name = cleaned["customer_name"]
@@ -1461,12 +1481,29 @@ def reception_new_order(request):
                     "phone": data.get("phone") or data.get("customer_phone", ""),
                     "email": data.get("email") or data.get("customer_email", ""),
                     "notes": data.get("notes") or "",
+                    "customer_id": customer_id_value,
                 }
                 context = {"prefill": prefill, "form": form, "device_formset": device_formset}
                 return render(request, "reception/new_order.html", context)
 
+            selected_customer = None
+            if customer_id_value:
+                try:
+                    selected_customer = Customer.objects.get(pk=int(customer_id_value))
+                except (ValueError, Customer.DoesNotExist):
+                    messages.error(request, "El cliente seleccionado ya no existe, vuelve a buscarlo.")
+                    prefill = {
+                        "name": data.get("name") or data.get("customer_name", ""),
+                        "phone": data.get("phone") or data.get("customer_phone", ""),
+                        "email": data.get("email") or data.get("customer_email", ""),
+                        "notes": data.get("notes") or "",
+                        "customer_id": "",
+                    }
+                    context = {"prefill": prefill, "form": form, "device_formset": device_formset}
+                    return render(request, "reception/new_order.html", context)
+
             with transaction.atomic():
-                customer = _ensure_customer(name, phone, email)
+                customer = selected_customer or _create_customer(name, phone, email)
                 created_devices = []
                 for entry in device_entries:
                     created_devices.append(
@@ -1527,6 +1564,7 @@ def reception_new_order(request):
             "phone": data.get("phone") or data.get("customer_phone", ""),
             "email": data.get("email") or data.get("customer_email", ""),
             "notes": data.get("notes") or "",
+            "customer_id": customer_id_value,
         }
         for errors in form.errors.values():
             for error in errors:
@@ -1965,7 +2003,7 @@ def notifications_list(request):
 @require_POST
 def notifications_mark_all_read(request):
     Notification.objects.filter(seen_at__isnull=True).update(seen_at=timezone.now())
-    messages.success(request, "Notificaciones marcadas como le&iacute;das.")
+    messages.success(request, "Notificaciones marcadas como leídas.")
     next_url = request.POST.get("next", "")
     if next_url:
         return redirect(next_url)
