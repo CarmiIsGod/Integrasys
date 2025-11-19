@@ -128,8 +128,8 @@
             <td>
               <div class="actions-row">
                 <a href="{% url 'public_status' token=o.token %}" target="_blank">Estado público</a>
-                <a href="{% url 'order_detail' o.pk %}" target="_blank">Detalle</a>
-                <a href="{% url 'order_attachments' o.pk %}" target="_blank">Adjuntos{% if o.attachments.count %} ({{ o.attachments.count }}){% endif %}</a>
+                <a href="{% url 'order_detail' o.pk %}">Detalle</a>
+                <a href="{% url 'order_attachments' o.pk %}">Adjuntos{% if o.attachments.count %} ({{ o.attachments.count }}){% endif %}</a>
               </div>
               <div class="actions-row">
                 <form method="post" action="{% url 'add_part' o.pk %}" style="display:flex;flex-wrap:wrap;gap:6px;">

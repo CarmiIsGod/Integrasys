@@ -29,6 +29,7 @@ urlpatterns = [
     path("t/<uuid:token>/qr.png", views.qr, name="qr"),
     path("t/<uuid:token>/recibo.pdf", views.receipt_pdf, name="receipt_pdf"),
 
+    path("recepcion/clientes/buscar/", views.reception_customer_search, name="reception_customer_search"),
     path("recepcion/nueva-orden/", views.reception_new_order, name="reception_new_order"),
     path("recepcion/ordenes/", views.list_orders, name="list_orders"),
     path("recepcion/ordenes/<int:pk>/", views.order_detail, name="order_detail"),

@@ -157,6 +157,7 @@ TIME_ZONE = "America/Mexico_City"
 USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DEFAULT_CHARSET = "utf-8"
 
 # --- Email (seguro para CI/local) ---
 EMAIL_BACKEND = os.getenv(

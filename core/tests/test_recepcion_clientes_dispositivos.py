@@ -57,25 +57,30 @@ class ReceptionCustomerDeviceTests(TestCase):
         self.assertEqual(order.device.customer.email, "demo@example.com")
         self.assertEqual(order.device.serial, "SN-001")
 
-    def test_reuses_customer_by_email_and_updates_missing_phone(self):
-        customer = Customer.objects.create(name="Cliente Demo", phone="", email="dupe@example.com")
-        payload = self._payload(customer_email="DUPE@example.com", customer_phone="5588887777")
+    def test_creates_new_customer_even_if_email_exists(self):
+        Customer.objects.create(name="Cliente Original", phone="1234567890", email="dupe@example.com")
+        payload = self._payload(customer_name="Cliente Nuevo", customer_email="dupe@example.com")
         response = self.client.post(self.url, payload)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Customer.objects.filter(email__iexact="dupe@example.com").count(), 1)
-        customer.refresh_from_db()
-        self.assertEqual(customer.phone, "5588887777")
+        self.assertEqual(Customer.objects.filter(email__iexact="dupe@example.com").count(), 2)
         order = ServiceOrder.objects.latest("id")
-        self.assertEqual(order.device.customer_id, customer.id)
+        self.assertEqual(order.customer.name, "Cliente Nuevo")
 
-    def test_reuses_customer_by_phone_when_email_missing(self):
-        customer = Customer.objects.create(name="Cliente Demo", phone="5511122233", email="")
-        payload = self._payload(customer_email="", customer_phone="5511122233")
+    def test_reuses_customer_when_customer_id_is_present(self):
+        customer = Customer.objects.create(name="Cliente Existente", phone="5512345678", email="cliente@demo.com")
+        payload = self._payload(
+            customer_name="Intento Override",
+            customer_phone="0000000000",
+            customer_email="otro@example.com",
+            customer_id=str(customer.id),
+        )
         response = self.client.post(self.url, payload)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Customer.objects.count(), 1)
         order = ServiceOrder.objects.latest("id")
-        self.assertEqual(order.device.customer_id, customer.id)
+        self.assertEqual(order.customer_id, customer.id)
+        customer.refresh_from_db()
+        self.assertEqual(customer.name, "Cliente Existente")
 
     def test_reuses_device_by_serial(self):
         customer = Customer.objects.create(name="Cliente Demo", phone="5553332222", email="demo@acme.com")
@@ -83,6 +88,7 @@ class ReceptionCustomerDeviceTests(TestCase):
         payload = self._payload(
             customer_email="demo@acme.com",
             customer_phone="5553332222",
+            customer_id=str(customer.id),
             serial="ABC-999",
             device_notes="Nueva falla",
         )
@@ -93,6 +99,25 @@ class ReceptionCustomerDeviceTests(TestCase):
         device.refresh_from_db()
         self.assertEqual(device.serial.upper(), "ABC-999")
         self.assertEqual(device.notes, "Nueva falla")
+
+    def test_invalid_customer_id_shows_error(self):
+        payload = self._payload(customer_id="9999")
+        response = self.client.post(self.url, payload, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Customer.objects.count(), 0)
+        context_messages = []
+        if response.context and "messages" in response.context:
+            context_messages = list(response.context["messages"])
+        self.assertTrue(any("vuelve a buscarlo" in m.message.lower() for m in context_messages))
+
+    def test_customer_search_endpoint_returns_matches(self):
+        Customer.objects.create(name="Diego Demo", phone="5554443322", email="diego@example.com")
+        url = reverse("reception_customer_search")
+        response = self.client.get(url, {"q": "diego"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("results", payload)
+        self.assertTrue(any(item["email"] == "diego@example.com" for item in payload["results"]))
 
     def test_requires_phone_or_email(self):
         payload = self._payload(customer_phone="", customer_email="")
