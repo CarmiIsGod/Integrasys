@@ -59,6 +59,7 @@ from .utils import (
     resolve_actor_role,
     log_status_snapshot,
     send_order_status_email,
+    format_csv_datetime,
 )
 
 
@@ -717,8 +718,8 @@ def list_orders(request):
                     order.get_status_display(),
                     tech_name,
                     format(order.approved_total, ".2f"),
-                    timezone.localtime(order.checkin_at).strftime("%Y-%m-%d %H:%M"),
-                    timezone.localtime(order.checkout_at).strftime("%Y-%m-%d %H:%M") if order.checkout_at else "",
+                    format_csv_datetime(order.checkin_at),
+                    format_csv_datetime(order.checkout_at),
                 ]
             )
         return resp

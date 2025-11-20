@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from .models import Payment, ServiceOrder
 from .permissions import require_manager
-from .utils import build_device_label, build_single_device_label
+from .utils import build_device_label, build_single_device_label, format_csv_datetime
 
 
 DATE_INPUT_FMT = "%Y-%m-%d"
@@ -120,15 +120,13 @@ def export_orders_csv(request):
         ]
         for order in orders:
             customer = order.get_customer()
-            ingreso = timezone.localtime(order.checkin_at) if order.checkin_at else None
-            entrega = timezone.localtime(order.checkout_at) if order.checkout_at else None
             yield [
                 order.id,
                 order.folio,
                 order.get_status_display(),
                 customer.name if customer else "",
-                ingreso.strftime("%Y-%m-%d %H:%M") if ingreso else "",
-                entrega.strftime("%Y-%m-%d %H:%M") if entrega else "",
+                format_csv_datetime(order.checkin_at),
+                format_csv_datetime(order.checkout_at),
                 order.assigned_to.get_username() if order.assigned_to_id else "",
                 f"{order.approved_total}",
                 f"{order.paid_total}",
@@ -178,7 +176,6 @@ def export_payments_csv(request):
         for payment in payments:
             order = payment.order
             customer = order.get_customer() if order else None
-            fecha = timezone.localtime(payment.created_at) if payment.created_at else None
             yield [
                 payment.id,
                 order.id if order else "",
@@ -188,7 +185,7 @@ def export_payments_csv(request):
                 payment.method,
                 payment.reference,
                 payment.author.get_username() if payment.author_id else "",
-                fecha.strftime("%Y-%m-%d %H:%M") if fecha else "",
+                format_csv_datetime(payment.created_at),
                 order.get_status_display() if order else "",
                 build_single_device_label(payment.device) if payment.device_id else "",
             ]

@@ -98,6 +98,18 @@ class ExportCSVTests(TestCase):
         self.assertIn(self.recent_order.folio, content)
         self.assertNotIn(self.old_order.folio, content)
 
+    def test_orders_csv_dates_are_text(self):
+        self.client.force_login(self.manager)
+        url = reverse("panel_export_orders")
+        start = (self.today - timedelta(days=2)).isoformat()
+        end = self.today.isoformat()
+        response = self.client.get(url, {"start": start, "end": end})
+        content = self._stream_content(response).replace("\ufeff", "")
+        lines = [line for line in content.splitlines() if line.strip()]
+        self.assertGreaterEqual(len(lines), 2)
+        data_row = lines[1]
+        self.assertIn('="', data_row)
+
     def test_payments_csv_filters_by_range(self):
         self.client.force_login(self.manager)
         url = reverse("panel_export_payments")
@@ -109,3 +121,15 @@ class ExportCSVTests(TestCase):
         self.assertIn("PagoID", content)
         self.assertIn(self.recent_payment.reference, content)
         self.assertNotIn(self.old_payment.reference, content)
+
+    def test_payments_csv_dates_are_text(self):
+        self.client.force_login(self.manager)
+        url = reverse("panel_export_payments")
+        start = (self.today - timedelta(days=2)).isoformat()
+        end = self.today.isoformat()
+        response = self.client.get(url, {"start": start, "end": end})
+        content = self._stream_content(response).replace("\ufeff", "")
+        lines = [line for line in content.splitlines() if line.strip()]
+        self.assertGreaterEqual(len(lines), 2)
+        data_row = lines[1]
+        self.assertIn('="', data_row)

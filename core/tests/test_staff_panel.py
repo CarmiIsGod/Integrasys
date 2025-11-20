@@ -145,8 +145,10 @@ class StaffPanelTests(TestCase):
         data_row = rows[1]
         self.assertEqual(data_row[0], in_order.folio)
         self.assertEqual(data_row[4], tech.get_username())
-        self.assertTrue(data_row[6].startswith(date_str))
-        self.assertTrue(data_row[7].startswith(date_str))
+        self.assertTrue(data_row[6].startswith('="'))
+        self.assertTrue(date_str in data_row[6])
+        self.assertTrue(data_row[7].startswith('="'))
+        self.assertTrue(date_str in data_row[7])
 
     def test_recepcion_user_cannot_export_csv(self):
         recep_group = Group.objects.create(name=ROLE_RECEPCION)

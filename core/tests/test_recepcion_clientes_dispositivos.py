@@ -146,3 +146,21 @@ class ReceptionCustomerDeviceTests(TestCase):
         self.assertContains(resp, device.brand)
         self.assertContains(resp, order.folio)
         self.assertContains(resp, second.folio)
+
+    def test_order_detail_shows_device_failures(self):
+        customer = Customer.objects.create(name="Cliente Failas", phone="5552221111", email="faila@example.com")
+        device_one = Device.objects.create(
+            customer=customer, brand="Lenovo", model="ThinkPad", serial="S11", notes="No enciende, posible corto."
+        )
+        device_two = Device.objects.create(
+            customer=customer, brand="Asus", model="Miau", serial="S22", notes="Pantalla rota, sin imagen."
+        )
+        order = ServiceOrder.objects.create(customer=customer, device=device_one)
+        order.devices.set([device_one, device_two])
+
+        url = reverse("order_detail", args=[order.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No enciende, posible corto.")
+        self.assertContains(response, "Pantalla rota, sin imagen.")

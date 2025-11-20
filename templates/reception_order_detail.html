@@ -122,6 +122,31 @@
           {% endif %}
         </div>
       </div>
+      <div class="card" style="text-align:left;">
+        <h2>Equipos y fallas</h2>
+        {% if order_devices %}
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;align-items:stretch;text-align:left;">
+            {% for device in order_devices %}
+              <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#f8fbff;text-align:left;">
+                <p style="margin:0;font-weight:600;text-align:left;">
+                  {{ device.brand }} {{ device.model }}
+                  {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+                </p>
+                <p style="margin:6px 0 0;white-space:pre-wrap;text-align:left;">
+                  <strong>Falla:</strong>
+                  {% if device.notes %}
+                    {{ device.notes }}
+                  {% else %}
+                    <span class="muted">Sin descripción capturada.</span>
+                  {% endif %}
+                </p>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">(sin dispositivos asociados)</p>
+        {% endif %}
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:18px;">

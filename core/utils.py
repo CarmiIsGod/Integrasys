@@ -3,6 +3,7 @@ from typing import Optional
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.mail import send_mail
+from django.utils import timezone
 
 from core.models import InventoryMovement, ServiceOrder, StatusHistory
 from core.permissions import is_gerencia, is_recepcion, is_tecnico
@@ -95,6 +96,22 @@ def build_single_device_label(device):
         return str(device)
     except Exception:
         return "Equipo"
+
+
+def format_csv_datetime(value):
+    """Return a CSV-friendly datetime string readable in Excel without auto-formatting."""
+    if not value:
+        return ""
+    localized = value
+    try:
+        localized = timezone.localtime(value)
+    except Exception:
+        localized = value
+    try:
+        formatted = localized.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        formatted = str(localized)
+    return f'="{formatted}"'
 
 
 def send_order_status_email(

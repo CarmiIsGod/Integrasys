@@ -4,13 +4,12 @@ from django.urls import reverse
 
 import csv
 from django.http import HttpResponse
-from django.utils import timezone
 
 from .models import (
     Customer, Device, ServiceOrder, StatusHistory,
     InventoryItem, InventoryMovement, Notification
 )
-from .utils import build_device_label, log_status_snapshot, send_order_status_email
+from .utils import build_device_label, log_status_snapshot, send_order_status_email, format_csv_datetime
 
 admin.site.site_header = "Integrasys - Administración"
 admin.site.site_title  = "Integrasys Admin"
@@ -67,10 +66,7 @@ def export_orders_csv(modeladmin, request, queryset):
         token = getattr(o, "token", "")
 
         def fmt(dt):
-            try:
-                return timezone.localtime(dt).strftime("%Y-%m-%d %H:%M") if dt else ""
-            except Exception:
-                return str(dt) if dt else ""
+            return format_csv_datetime(dt)
 
         w.writerow([folio, cliente_name, equipo, estado, fmt(checkin), token])
 
