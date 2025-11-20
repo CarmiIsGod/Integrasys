@@ -1,42 +1,137 @@
 {% load static %}
 {% with request.path as current_path %}
   <style>
-    .reception-nav {background:#1d4ed8;color:#fff;padding:12px 18px;border-radius:12px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:Segoe UI,Arial,sans-serif;box-shadow:0 10px 25px rgba(15,23,42,0.15);}
-    .reception-nav__links {display:flex;gap:10px;flex-wrap:wrap;}
-    .reception-nav__links a {color:#e0e7ff;padding:6px 12px;border-radius:999px;text-decoration:none;transition:background .2s,color .2s;font-weight:500;}
-    .reception-nav__links a:hover {background:rgba(255,255,255,0.18);}
-    .reception-nav__links a.is-active {background:rgba(255,255,255,0.35);color:#0f172a;}
-    .reception-nav__logo {display:flex;align-items:center;gap:12px;font-weight:600;font-size:15px;}
-    .reception-nav__logo img {display:block;max-height:36px;width:auto;object-fit:contain;}
-    .reception-nav__logo span{font-size:18px;font-weight:600;color:#fff;}
-    .reception-nav__bell {position:relative;display:inline-flex;align-items:center;gap:6px;}
-    .reception-nav__badge {position:absolute;top:2px;right:6px;background:#dc2626;color:#fff;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:700;line-height:1.4;}
-    .reception-nav__label {font-size:14px;}
-    @media (max-width: 768px) {
-      .reception-nav {flex-direction:column;align-items:flex-start;border-radius:0;margin-left:-24px;margin-right:-24px;padding:16px 24px;}
-      .reception-nav__links {width:100%;justify-content:flex-start;gap:6px;}
-      .reception-nav__links a {font-size:14px;padding:6px 10px;}
-      .reception-nav__logo {width:100%;justify-content:space-between;}
-      .reception-nav__logo img {max-height:30px;}
+    .reception-nav {
+      background:#1d4ed8;
+      color:#fff;
+      padding:12px 18px;
+      border-radius:12px;
+      margin-bottom:18px;
+      font-family:Segoe UI,Arial,sans-serif;
+      box-shadow:0 10px 25px rgba(15,23,42,0.15);
+      overflow:hidden;
+    }
+    .reception-nav-main {
+      display:flex;
+      align-items:center;
+      gap:16px;
+      flex-wrap:wrap;
+    }
+    .reception-nav-logo {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      font-weight:600;
+      font-size:15px;
+      flex-shrink:0;
+    }
+    .reception-nav-logo img {max-height:36px;width:auto;object-fit:contain;}
+    .reception-nav-logo span{font-size:18px;font-weight:600;color:#fff;}
+    .reception-nav-tabs {
+      display:none;
+      flex:1;
+    }
+    .reception-nav-tabs a {display:none;}
+    .reception-nav-bell {position:relative;display:inline-flex;align-items:center;gap:6px;}
+    .reception-nav-badge {position:absolute;top:2px;right:6px;background:#dc2626;color:#fff;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:700;line-height:1.4;}
+    .reception-nav-label {font-size:14px;}
+    .reception-nav-toggle {
+      background:rgba(255,255,255,0.12);
+      color:#fff;
+      border:1px solid rgba(255,255,255,0.3);
+      border-radius:999px;
+      padding:6px 16px;
+      font-size:14px;
+      font-weight:600;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      flex-shrink:0;
+    }
+    .reception-nav-toggle:hover {background:rgba(255,255,255,0.25);}
+    .reception-nav-dropdown {
+      display:none;
+      flex-direction:column;
+      margin-top:12px;
+      background:rgba(255,255,255,0.08);
+      border-radius:0 0 12px 12px;
+      padding:12px;
+      gap:8px;
+      width:100%;
+      box-sizing:border-box;
+    }
+    .reception-nav-dropdown a {
+      color:#fff;
+      text-decoration:none;
+      padding:8px;
+      border-radius:8px;
+      font-weight:500;
+    }
+    .reception-nav-dropdown a.is-active {background:rgba(255,255,255,0.2);color:#0f172a;}
+    .reception-nav.is-open .reception-nav-dropdown {
+      display:flex;
+    }
+    @media (max-width:991px){
+      .reception-nav {
+        border-radius:0;
+        margin-left:0;
+        margin-right:0;
+        padding:16px;
+      }
+      .reception-nav-main {
+        width:100%;
+        flex-wrap:wrap;
+        justify-content:space-between;
+        gap:12px;
+      }
+      .reception-nav-toggle {
+        margin-left:auto;
+      }
     }
   </style>
   <div class="reception-nav">
-    <div class="reception-nav__logo">
-      <img src="{% static 'img/brand/imago-blanco.png' %}" alt="Integrasys">
-      <span>Recepción</span>
+    <div class="reception-nav-main">
+      <div class="reception-nav-logo">
+        <img src="{% static 'img/brand/imago-blanco.png' %}" alt="Integrasys">
+        <span>Recepci&oacute;n</span>
+      </div>
+      <nav class="reception-nav-tabs" aria-label="Navegaci&oacute;n de recepci&oacute;n"></nav>
+      <button class="reception-nav-toggle" type="button" aria-expanded="false">
+        <span aria-hidden="true">&#9776;</span>
+        <span>Men&uacute;</span>
+      </button>
     </div>
-    <nav class="reception-nav__links">
+    <nav class="reception-nav-dropdown" aria-label="Men&uacute; de recepci&oacute;n">
       <a href="{% url 'reception_home' %}" class="{% if current_path == '/recepcion/' %}is-active{% endif %}">Inicio</a>
       <a href="{% url 'reception_new_order' %}" class="{% if current_path == '/recepcion/nueva-orden/' %}is-active{% endif %}">Nueva orden</a>
       <a href="{% url 'list_orders' %}" class="{% if '/recepcion/ordenes/' in current_path or '/recepcion/orden/' in current_path %}is-active{% endif %}">&Oacute;rdenes</a>
       <a href="{% url 'inventory_list' %}" class="{% if '/inventario/' in current_path %}is-active{% endif %}">Inventario</a>
-      <a href="{% url 'notifications_list' %}" class="reception-nav__bell {% if '/notificaciones/' in current_path %}is-active{% endif %}">
-        <span aria-hidden="true">🔔</span>
-        <span class="reception-nav__label">Notificaciones</span>
-        {% if nav_notifications_unread %}
-          <span class="reception-nav__badge">{{ nav_notifications_unread }}</span>
-        {% endif %}
-      </a>
+      <a href="{% url 'notifications_list' %}" class="{% if '/notificaciones/' in current_path %}is-active{% endif %}">Notificaciones</a>
     </nav>
   </div>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const nav = document.querySelector(".reception-nav");
+      const toggle = document.querySelector(".reception-nav-toggle");
+      const dropdown = document.querySelector(".reception-nav-dropdown");
+      if (!nav || !toggle || !dropdown) {
+        return;
+      }
+      const closeMenu = () => {
+        nav.classList.remove("is-open");
+        toggle.setAttribute("aria-expanded", "false");
+      };
+      toggle.addEventListener("click", function () {
+        nav.classList.toggle("is-open");
+        const expanded = nav.classList.contains("is-open");
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      });
+      document.addEventListener("click", function (event) {
+        if (!nav.contains(event.target)) {
+          closeMenu();
+        }
+      });
+    });
+  </script>
 {% endwith %}

@@ -8,6 +8,7 @@
         body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background-color: #f4f6f9; color: #1f2933; }
         .layout { max-width: 1200px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
         h1 { font-size: 28px; margin: 0; }
+        .header-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
         .filters { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
         .filters label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
         .filters input, .filters select { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 14px; background-color: #fff; color: #1f2933; }
@@ -15,6 +16,8 @@
         .filter-actions { display: flex; gap: 8px; grid-column: 1 / -1; flex-wrap: wrap; }
         .filters button { background: #2563eb; color: #fff; border: none; border-radius: 5px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
         .filters button:hover { background: #1d4ed8; }
+        .btn-primary{display:inline-flex;align-items:center;justify-content:center;background:#2563eb;color:#fff;border-radius:999px;padding:10px 20px;font-size:15px;font-weight:600;text-decoration:none;box-shadow:0 8px 20px rgba(37,99,235,0.2);}
+        .btn-primary:hover{background:#1d4ed8;}
         .btn-secondary { display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #cbd5e0; color: #374151; border-radius: 5px; padding: 8px 16px; text-decoration: none; }
         .btn-secondary:hover { background: #f3f4f6; }
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
@@ -57,7 +60,10 @@
 <body>
     {% load tz %}
     <div class="layout">
-        <h1>Panel de servicio</h1>
+        <div class="header-actions">
+            <h1>Panel de servicio</h1>
+            <a href="{% url 'reception_home' %}" class="btn-primary">Ir a Recepción</a>
+        </div>
         <form method="get" class="filters">
             <div>
                 <label for="filter-q">Buscar</label>

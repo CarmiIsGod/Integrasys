@@ -49,6 +49,13 @@ class StaffPanelTests(TestCase):
         resp = self.client.get("/recepcion/ordenes/")
         self.assertEqual(resp.status_code, 200)
 
+    def test_dashboard_has_reception_shortcut(self):
+        resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(resp.status_code, 200)
+        reception_url = reverse("reception_home")
+        self.assertContains(resp, "Ir a Recepción")
+        self.assertIn(reception_url, resp.content.decode("utf-8"))
+
     def test_change_status_flow(self):
         order = self._create_order()  # status NEW por defecto
         url = reverse("change_status", args=[order.pk])
