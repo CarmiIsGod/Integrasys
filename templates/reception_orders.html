@@ -5,17 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Órdenes de servicio | Integrasys</title>
   <style>
-    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
+    *,*::before,*::after{box-sizing:border-box;}
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;overflow-x:hidden;}
     h1{margin:0 0 12px;font-size:28px;}
     .muted{color:#64748b;font-size:14px;}
     .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
-    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
-    form{display:grid;gap:12px;}
-    form label{font-weight:600;color:#1e293b;font-size:14px;display:flex;flex-direction:column;gap:6px;}
-    form input,form select{padding:10px;border:1px solid #cbd5f5;border-radius:10px;font-family:inherit;transition:border 0.2s ease;}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;min-width:0;}
+    form{display:flex;flex-direction:column;gap:12px;}
+    .filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;width:100%;}
+    form label{font-weight:600;color:#1e293b;font-size:14px;display:flex;flex-direction:column;gap:6px;min-width:0;}
+    form input,form select{padding:10px;border:1px solid #cbd5f5;border-radius:10px;font-family:inherit;transition:border 0.2s ease;width:100%;}
     form input:focus,form select:focus{border-color:#94a3b8;outline:none;box-shadow:0 0 0 3px rgba(148,163,184,0.25);}
-    form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
+    form button{padding:10px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;min-width:140px;}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
     th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
     th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
@@ -25,11 +27,13 @@
     .pill{display:inline-block;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px;}
     .pager{display:flex;justify-content:space-between;align-items:center;margin-top:18px;color:#64748b;}
     .table-wrapper{background:#fff;border-radius:12px;box-shadow:0 6px 16px rgba(15,23,42,0.06);overflow-x:auto;}
+    main{max-width:1200px;margin:0 auto;}
+    @media (max-width:1100px){
+      form button,.btn,.btn-ghost{width:100%;justify-content:center;display:inline-flex;}
+    }
     @media (max-width:900px){
       body{padding:16px;}
       form label{font-size:13px;}
-      form button,.btn,.btn-ghost{width:100%;justify-content:center;display:inline-flex;}
-      form input,form select{width:100%;}
       .actions-row{flex-direction:column;align-items:flex-start;}
     }
     @media (max-width:600px){
@@ -54,7 +58,7 @@
 
     <section class="card" style="margin-bottom:18px;">
       <form method="get">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;">
+        <div class="filters-grid">
           <label>Folio / cliente / modelo / serie
             <input type="text" name="q" placeholder="Buscar" value="{{ query }}">
           </label>
