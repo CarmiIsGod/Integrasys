@@ -16,6 +16,8 @@
     .identity__brand img{height:70px;width:auto;display:block;}
     .identity .qr{height:128px;width:128px;flex-shrink:0;border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;}
     .status{display:inline-block;padding:4px 10px;border-radius:999px;background:#f2f2f2}
+    .device-notes{font-size:13px;color:#475569;margin-top:2px;}
+    .public-disclaimer{margin-top:20px;background:#f8fafc;border-radius:12px;padding:12px 16px;color:#475569;font-size:13px;line-height:1.4;text-align:center;}
     @media print {.no-print{display:none}}
   </style>
 </head>
@@ -35,7 +37,17 @@
         {% if devices %}
           <ul style="margin:4px 0 0 18px;padding:0;">
             {% for device in devices %}
-              <li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>
+              <li style="margin-bottom:6px;">
+                <div>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</div>
+                <div class="device-notes">
+                  Descripci&oacute;n / accesorios / falla:
+                  {% if device.notes %}
+                    {{ device.notes }}
+                  {% else %}
+                    Falla no reportada.
+                  {% endif %}
+                </div>
+              </li>
             {% endfor %}
           </ul>
         {% else %}
@@ -63,11 +75,16 @@
         {% endfor %}
       </tbody>
     </table>
-    <p class="muted">Guarda esta página o el QR para consultar más tarde.</p>
-    <p style="margin-top:12px">
-      <a href="{% url 'receipt_pdf' token=order.token %}" target="_blank">Descargar recibo (PDF)</a>
-    </p>
-  </div>
+    <div class="public-disclaimer" style="text-align:center;">
+      <p style="white-space:pre-line;margin:0 0 10px 0;">
+IMPORTANTE: Esta orden de trabajo es el medio por el cual se hara entrega del equipo que ha dejado a reparaci&oacute;n. NO SE HARA ENTREGA DE EQUIPO SIN LA ORDEN DE SERVICIO CORRESPONDIENTE. La empresa no se hace responsable por perdidas de informaci&oacute;n que no haya respaldado el cliente con anterioridad.
+Se informa a nuestros clientes que, una vez notificados del diagn&oacute;stico o la reparaci&oacute;n de sus equipos, disponen de un plazo de 20 d&iacute;as naturales para recogerlos. Despu&eacute;s de ese per&iacute;odo, la responsabilidad de la empresa se limita y no nos hacemos responsables por da&ntilde;os y/o p&eacute;rdidas ocurridos a los equipos. Al aceptar nuestros servicios, el cliente acepta que es su responsabilidad tomar las medidas necesarias para asegurar su propiedad durante el tiempo que los equipos se encuentren en nuestras instalaciones. Este disclaimer forma parte integral de nuestros t&eacute;rminos y condiciones.
+      </p>
+      <p class="muted" style="margin:0 0 10px 0;">Puedes conservar esta p&aacute;gina o el c&oacute;digo QR para futuras consultas.</p>
+      <p style="margin:0;">
+        <a href="{% url 'receipt_pdf' token=order.token %}" target="_blank">Descargar recibo (PDF)</a>
+      </p>
+    </div>
   <p class="no-print"><button onclick="window.print()">Imprimir</button></p>
 </body>
 </html>
