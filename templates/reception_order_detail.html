@@ -1,8 +1,11 @@
 ﻿<!doctype html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.png?v=2' %}">
+  <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <title>Orden {{ order.folio }} | Integrasys</title>
   <style>
     *,*::before,*::after{box-sizing:border-box;}
@@ -119,7 +122,11 @@
           {% if estimate_has_items and can_send_estimate %}
             <form method="post" action="{% url 'estimate_send' order.pk %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-ghost">Enviar al cliente</button>
+              <button type="submit" class="btn btn-ghost">Enviar por correo</button>
+            </form>
+            <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-whatsapp">Enviar por WhatsApp</button>
             </form>
           {% endif %}
           {% if estimate_public_url %}
@@ -314,3 +321,4 @@
   </main>
 </body>
 </html>
+

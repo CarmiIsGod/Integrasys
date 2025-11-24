@@ -130,6 +130,13 @@ def _build_estimate_form_context(request, order, estimate, *, form_items=None, n
     }
 
 
+def _build_estimate_message(order, customer, public_url):
+    customer_name = getattr(customer, "name", "") if customer else ""
+    if not customer_name:
+        customer_name = "cliente"
+    return f"Hola {customer_name},\nRevisa la cotizacion {order.folio}: {public_url}"
+
+
 def _resolve_order_folio(order):
     folio = getattr(order, "folio", None)
     if folio:
@@ -1797,10 +1804,7 @@ def estimate_send(request, pk):
     }
     subject = f"Cotizacion orden {order.folio}"
     customer_name = getattr(customer, "name", "") if customer else "cliente"
-    plain_message = (
-        f"Hola {customer_name},\n"
-        f"Revisa la cotizacion {order.folio}: {public_url}\n"
-    )
+    plain_message = _build_estimate_message(order, customer, public_url)
     html_message = render_to_string("estimate_email.html", context)
 
     send_count = send_mail(
@@ -1832,6 +1836,54 @@ def estimate_send(request, pk):
     else:
         messages.warning(request, "No se pudo enviar la cotizacion por correo.")
     return redirect("estimate_edit", pk=order.pk)
+
+
+@login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@require_POST
+def estimate_send_whatsapp(request, pk):
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
+        pk=pk,
+    )
+    estimate, _ = Estimate.objects.get_or_create(order=order)
+    if not estimate.items.exists():
+        messages.error(request, "Agrega partidas a la cotizacion antes de enviar.")
+        return redirect("estimate_edit", pk=order.pk)
+
+    customer = order.get_customer()
+    phone = (getattr(customer, "phone", "") or "").strip() if customer else ""
+    if not phone:
+        messages.error(request, "El cliente no tiene telefono registrado.")
+        return redirect("estimate_edit", pk=order.pk)
+
+    public_url = request.build_absolute_uri(reverse("estimate_public", args=[estimate.token]))
+    customer_name = getattr(customer, "name", "") if customer else "cliente"
+    whatsapp_message = _build_estimate_message(order, customer, public_url)
+    whatsapp_url = build_whatsapp_link(phone, whatsapp_message)
+    if not whatsapp_url:
+        messages.error(
+            request,
+            "No se pudo generar el enlace de WhatsApp. Verifica el telefono del cliente.",
+        )
+        return redirect("estimate_edit", pk=order.pk)
+
+    Notification.objects.create(
+        order=order,
+        kind="whatsapp",
+        channel="estimate_send_whatsapp",
+        ok=True,
+        payload={
+            "to": phone,
+            "estimate": str(estimate.token),
+            "url": public_url,
+            "order_folio": _resolve_order_folio(order),
+            "order": _resolve_order_folio(order),
+            "customer": customer_name,
+        },
+    )
+
+    return redirect(whatsapp_url)
 
 
 
@@ -1905,7 +1957,15 @@ def estimate_approve(request, token):
         estimate.declined_at = None
         estimate.save(update_fields=["approved_at", "declined_at"])
         actor_role = resolve_actor_role(None)
-        order.transition_to(ServiceOrder.Status.WAITING_PARTS, author=None, author_role=actor_role)
+        target_status = ServiceOrder.Status.WAITING_PARTS
+        fallback_status = ServiceOrder.Status.IN_REVIEW
+        if order.can_transition_to(target_status):
+            order.transition_to(target_status, author=None, author_role=actor_role)
+        elif fallback_status and order.can_transition_to(fallback_status):
+            # Avanza a revision si la orden sigue en NEW y vuelve a intentar dejarla esperando refacciones.
+            order.transition_to(fallback_status, author=None, author_role=actor_role)
+            if order.can_transition_to(target_status):
+                order.transition_to(target_status, author=None, author_role=actor_role)
 
     customer = order.get_customer()
     customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""
@@ -1965,7 +2025,8 @@ def estimate_decline(request, token):
         estimate.approved_at = None
         estimate.save(update_fields=["approved_at", "declined_at"])
         actor_role = resolve_actor_role(None)
-        order.transition_to(ServiceOrder.Status.IN_REVIEW, author=None, author_role=actor_role)
+        if order.can_transition_to(ServiceOrder.Status.IN_REVIEW):
+            order.transition_to(ServiceOrder.Status.IN_REVIEW, author=None, author_role=actor_role)
 
     customer = order.get_customer()
     customer_email = (getattr(customer, "email", "") or "").strip() if customer else ""

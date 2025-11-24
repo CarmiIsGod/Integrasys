@@ -1,8 +1,11 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.png?v=2' %}">
+  <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <title>Dispositivos de {{ customer.name }}</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
@@ -49,9 +52,9 @@
     <tbody>
       {% for d in devices %}
         <tr>
-          <td>{{ d.brand|default:"―" }}</td>
-          <td>{{ d.model|default:"―" }}</td>
-          <td>{{ d.serial|default:"―" }}</td>
+          <td>{{ d.brand|default:"â€•" }}</td>
+          <td>{{ d.model|default:"â€•" }}</td>
+          <td>{{ d.serial|default:"â€•" }}</td>
           <td>
             {% if d.orders.all %}
               <ul style="margin:0;padding-left:18px;">
@@ -74,3 +77,4 @@
   <a class="btn" href="{% url 'list_orders' %}">Volver</a>
 </body>
 </html>
+

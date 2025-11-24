@@ -52,6 +52,7 @@ urlpatterns = [
     # Cotizaciones
     path("recepcion/ordenes/<int:pk>/cotizacion/", views.estimate_edit, name="estimate_edit"),
     path("recepcion/ordenes/<int:pk>/cotizacion/enviar/", views.estimate_send, name="estimate_send"),
+    path("recepcion/ordenes/<int:pk>/cotizacion/whatsapp/", views.estimate_send_whatsapp, name="estimate_send_whatsapp"),
     path("cotizacion/<uuid:token>/", views.estimate_public, name="estimate_public"),
     path("cotizacion/<uuid:token>/aprobar/", views.estimate_approve, name="estimate_approve"),
     path("cotizacion/<uuid:token>/rechazar/", views.estimate_decline, name="estimate_decline"),

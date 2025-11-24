@@ -1,8 +1,11 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.png?v=2' %}">
+  <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <title>Cotizacion orden {{ order.folio }}</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:960px}
@@ -18,6 +21,7 @@
     .btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;background:#6b7280;color:#fff;border:0;cursor:pointer}
     .btn.secondary{background:#6b7280}
     .btn.primary{background:#2563eb}
+    .btn-whatsapp{background:#16a34a;color:#fff}
     .actions{display:flex;gap:12px;align-items:center;margin-top:12px}
     a.btn{text-decoration:none}
     .summary{margin-top:20px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
@@ -100,7 +104,11 @@
     {% if has_saved_items %}
       <form method="post" action="{% url 'estimate_send' order.pk %}" class="inline">
         {% csrf_token %}
-        <button type="submit" class="primary" data-clear-draft="1">Enviar cotizacion</button>
+        <button type="submit" class="primary" data-clear-draft="1">Enviar por correo</button>
+      </form>
+      <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}" class="inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-whatsapp" data-clear-draft="1">Enviar por WhatsApp</button>
       </form>
     {% endif %}
     {% if public_estimate_url %}
@@ -268,4 +276,5 @@
   </script>
 </body>
 </html>
+
 

@@ -1,7 +1,10 @@
 ﻿<!doctype html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="utf-8">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.png?v=2' %}">
+  <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <title>Adjuntos {{ order.folio }} | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
@@ -327,3 +330,4 @@
   </script>
 </body>
 </html>
+
