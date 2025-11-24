@@ -17,6 +17,7 @@
     .identity .qr{height:128px;width:128px;flex-shrink:0;border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;}
     .status{display:inline-block;padding:4px 10px;border-radius:999px;background:#f2f2f2}
     .device-notes{font-size:13px;color:#475569;margin-top:2px;}
+    .device-detail-label{font-weight:400;color:#1f2937;}
     .public-disclaimer{margin-top:20px;background:#f8fafc;border-radius:12px;padding:12px 16px;color:#475569;font-size:13px;line-height:1.4;text-align:center;}
     @media print {.no-print{display:none}}
   </style>
@@ -47,6 +48,16 @@
                     Falla no reportada.
                   {% endif %}
                 </div>
+                {% if device.password_notes %}
+                  <div class="device-notes">
+                    <span class="device-detail-label">Contrase&ntilde;a / PIN:</span> {{ device.password_notes }}
+                  </div>
+                {% endif %}
+                {% if device.accessories_notes %}
+                  <div class="device-notes">
+                    <span class="device-detail-label">Accesorios:</span> {{ device.accessories_notes }}
+                  </div>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>

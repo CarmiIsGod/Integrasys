@@ -34,12 +34,16 @@ class ReceptionCustomerDeviceTests(TestCase):
             "devices-0-model": "XPS 13",
             "devices-0-serial": "sn-001",
             "devices-0-notes": "No enciende",
+            "devices-0-password_notes": "",
+            "devices-0-accessories_notes": "",
         }
         legacy_map = {
             "brand": "devices-0-brand",
             "model": "devices-0-model",
             "serial": "devices-0-serial",
             "device_notes": "devices-0-notes",
+            "password_notes": "devices-0-password_notes",
+            "accessories_notes": "devices-0-accessories_notes",
         }
         normalized = {}
         for key, value in overrides.items():
@@ -100,6 +104,17 @@ class ReceptionCustomerDeviceTests(TestCase):
         self.assertEqual(device.serial.upper(), "ABC-999")
         self.assertEqual(device.notes, "Nueva falla")
 
+    def test_stores_password_and_accessories_notes(self):
+        payload = self._payload(
+            password_notes="4321",
+            accessories_notes="Cargador original, funda",
+        )
+        response = self.client.post(self.url, payload)
+        self.assertEqual(response.status_code, 302)
+        device = Device.objects.latest("id")
+        self.assertEqual(device.password_notes, "4321")
+        self.assertEqual(device.accessories_notes, "Cargador original, funda")
+
     def test_invalid_customer_id_shows_error(self):
         payload = self._payload(customer_id="9999")
         response = self.client.post(self.url, payload, follow=True)
@@ -150,10 +165,21 @@ class ReceptionCustomerDeviceTests(TestCase):
     def test_order_detail_shows_device_failures(self):
         customer = Customer.objects.create(name="Cliente Failas", phone="5552221111", email="faila@example.com")
         device_one = Device.objects.create(
-            customer=customer, brand="Lenovo", model="ThinkPad", serial="S11", notes="No enciende, posible corto."
+            customer=customer,
+            brand="Lenovo",
+            model="ThinkPad",
+            serial="S11",
+            notes="No enciende, posible corto.",
+            password_notes="PIN 0000",
+            accessories_notes="Dock y cargador",
         )
         device_two = Device.objects.create(
-            customer=customer, brand="Asus", model="Miau", serial="S22", notes="Pantalla rota, sin imagen."
+            customer=customer,
+            brand="Asus",
+            model="Miau",
+            serial="S22",
+            notes="Pantalla rota, sin imagen.",
+            accessories_notes="Teclado externo",
         )
         order = ServiceOrder.objects.create(customer=customer, device=device_one)
         order.devices.set([device_one, device_two])
@@ -164,3 +190,6 @@ class ReceptionCustomerDeviceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "No enciende, posible corto.")
         self.assertContains(response, "Pantalla rota, sin imagen.")
+        self.assertContains(response, "PIN 0000")
+        self.assertContains(response, "Dock y cargador")
+        self.assertContains(response, "Teclado externo")

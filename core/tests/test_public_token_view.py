@@ -8,7 +8,13 @@ class PublicTokenViewTests(TestCase):
     def setUp(self):
         customer = Customer.objects.create(name="Cliente", email="c@example.com")
         device = Device.objects.create(
-            customer=customer, brand="Dell", model="XPS", serial="SN-9", notes="Trae cargador y funda."
+            customer=customer,
+            brand="Dell",
+            model="XPS",
+            serial="SN-9",
+            notes="Trae cargador y funda.",
+            password_notes="1234",
+            accessories_notes="Cargador original, funda",
         )
         self.order = ServiceOrder.objects.create(customer=customer, device=device)
         self.order.devices.set([device])
@@ -37,6 +43,14 @@ class PublicTokenViewTests(TestCase):
         response = self.client.get(url)
         self.assertContains(response, "Descripci&oacute;n / accesorios / falla")
         self.assertContains(response, "Trae cargador y funda.")
+
+    def test_public_status_shows_password_and_accessories(self):
+        url = reverse("public_status", args=[self.order.token])
+        response = self.client.get(url)
+        self.assertContains(response, "Contrase&ntilde;a / PIN")
+        self.assertContains(response, "1234")
+        self.assertContains(response, "Accesorios:")
+        self.assertContains(response, "Cargador original, funda")
 
     def test_public_status_hides_empty_description(self):
         customer = Customer.objects.create(name="Otro", email="otro@example.com")

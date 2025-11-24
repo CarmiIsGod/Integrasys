@@ -12,6 +12,7 @@
     .muted{color:#64748b;font-size:14px;}
     .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
+    .btn-whatsapp{background:#16a34a!important;color:#fff!important;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;min-width:0;}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:18px;width:100%;}
     ul.messages{list-style:none;padding:0;margin:12px 0;}
@@ -72,7 +73,7 @@
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;">
           <a class="btn" href="{{ public_url }}" target="_blank">Estado público</a>
           <a class="btn btn-ghost" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
-          {% if wa_link %}<a class="btn" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+          {% if wa_link %}<a class="btn btn-whatsapp" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
           <a class="btn btn-ghost" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
         </div>
       </div>
@@ -144,6 +145,16 @@
                     <span class="muted">Sin descripción capturada.</span>
                   {% endif %}
                 </p>
+                {% if device.password_notes %}
+                  <p style="margin:6px 0 0;white-space:pre-wrap;text-align:left;">
+                    <strong>Contraseña / PIN:</strong> {{ device.password_notes }}
+                  </p>
+                {% endif %}
+                {% if device.accessories_notes %}
+                  <p style="margin:6px 0 0;white-space:pre-wrap;text-align:left;">
+                    <strong>Accesorios:</strong> {{ device.accessories_notes }}
+                  </p>
+                {% endif %}
               </div>
             {% endfor %}
           </div>

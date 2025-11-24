@@ -50,6 +50,18 @@ class ReceptionDeviceForm(forms.Form):
     model = forms.CharField(label="Modelo", max_length=50)
     serial = forms.CharField(label="Serie", max_length=100, required=False)
     notes = forms.CharField(label="Descripcion / Falla", widget=forms.Textarea, required=False)
+    password_notes = forms.CharField(
+        label="Contraseña / PIN",
+        max_length=140,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "PIN, patron, etc."}),
+    )
+    accessories_notes = forms.CharField(
+        label="Accesorios",
+        max_length=240,
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2, "placeholder": "Cargador, funda, mouse..."}),
+    )
 
     def _strip(self, key):
         value = (self.cleaned_data.get(key) or "").strip()
@@ -66,6 +78,12 @@ class ReceptionDeviceForm(forms.Form):
 
     def clean_notes(self):
         return (self.cleaned_data.get("notes") or "").strip()
+
+    def clean_password_notes(self):
+        return (self.cleaned_data.get("password_notes") or "").strip()
+
+    def clean_accessories_notes(self):
+        return (self.cleaned_data.get("accessories_notes") or "").strip()
 
 
 from django.forms import formset_factory

@@ -172,8 +172,10 @@ def _create_customer(name, phone, email):
     return Customer.objects.create(name=name, phone=phone or "", email=email or "")
 
 
-def _ensure_device(customer, *, brand, model, serial, notes):
+def _ensure_device(customer, *, brand, model, serial, notes, password_notes="", accessories_notes=""):
     serial_norm = (serial or "").strip().upper()
+    password_notes_value = (password_notes or "").strip()
+    accessories_notes_value = (accessories_notes or "").strip()
     device = None
     if serial_norm:
         device = (
@@ -199,6 +201,8 @@ def _ensure_device(customer, *, brand, model, serial, notes):
             model=model,
             serial=serial_norm,
             notes=notes,
+            password_notes=password_notes_value,
+            accessories_notes=accessories_notes_value,
         )
 
     updates = []
@@ -219,6 +223,12 @@ def _ensure_device(customer, *, brand, model, serial, notes):
     elif notes and notes.strip() and (device.notes or "").strip() != notes.strip():
         device.notes = notes
         updates.append("notes")
+    if password_notes_value and (device.password_notes or "").strip() != password_notes_value:
+        device.password_notes = password_notes_value
+        updates.append("password_notes")
+    if accessories_notes_value and (device.accessories_notes or "").strip() != accessories_notes_value:
+        device.accessories_notes = accessories_notes_value
+        updates.append("accessories_notes")
     if updates:
         device.save(update_fields=updates)
     return device
@@ -1438,6 +1448,8 @@ def reception_new_order(request):
             legacy_model = data.get("model", "")
             legacy_serial = data.get("serial", "")
             legacy_notes = data.get("notes", "")
+            legacy_password = data.get("password_notes", "")
+            legacy_accessories = data.get("accessories_notes", "")
             data["devices-TOTAL_FORMS"] = "1"
             data["devices-INITIAL_FORMS"] = "0"
             data["devices-MIN_NUM_FORMS"] = "1"
@@ -1447,6 +1459,8 @@ def reception_new_order(request):
             data["devices-0-model"] = legacy_model
             data["devices-0-serial"] = legacy_serial
             data["devices-0-notes"] = legacy_notes
+            data["devices-0-password_notes"] = legacy_password
+            data["devices-0-accessories_notes"] = legacy_accessories
         form = ReceptionForm(data)
         device_formset = ReceptionDeviceFormSet(data, prefix="devices")
         customer_id_value = (data.get("customer_id") or "").strip()
@@ -1472,6 +1486,8 @@ def reception_new_order(request):
                         "model": model,
                         "serial": device_cleaned.get("serial", "").strip(),
                         "notes": device_cleaned.get("notes", "").strip(),
+                        "password_notes": device_cleaned.get("password_notes", "").strip(),
+                        "accessories_notes": device_cleaned.get("accessories_notes", "").strip(),
                     }
                 )
 
@@ -1514,6 +1530,8 @@ def reception_new_order(request):
                             model=entry["model"],
                             serial=entry["serial"],
                             notes=entry["notes"],
+                            password_notes=entry.get("password_notes", ""),
+                            accessories_notes=entry.get("accessories_notes", ""),
                         )
                     )
                 primary_device = created_devices[0]

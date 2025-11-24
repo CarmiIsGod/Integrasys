@@ -36,6 +36,11 @@
     .device-card__header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;}
     .device-delete-field{display:none;}
     .js-remove-device{display:none;}
+    .device-toggle{margin-top:12px;padding:10px;border:1px dashed #cbd5f5;border-radius:10px;background:#eef2ff;}
+    .device-toggle label{display:flex;align-items:center;gap:8px;font-weight:600;margin:0;color:#1e293b;}
+    .device-toggle input[type="checkbox"]{width:auto;margin:0;}
+    .toggle-target{margin-top:8px;}
+    .toggle-target[hidden]{display:none;}
     @media (max-width:900px){
       body{padding:16px;}
       h1{font-size:24px;}
@@ -133,6 +138,28 @@
               <label style="margin-top:12px;display:block;">Descripci&oacute;n / Falla</label>
               {{ form.notes }}
               {% for error in form.notes.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+              <div class="device-toggle" data-toggle-group>
+                <label>
+                  <input type="checkbox" class="js-toggle-password">
+                  Tiene contraseña / PIN
+                </label>
+                <div class="toggle-target" data-password-target hidden>
+                  <label style="margin-top:8px;">Contraseña / PIN</label>
+                  {{ form.password_notes }}
+                  {% for error in form.password_notes.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="device-toggle" data-toggle-group>
+                <label>
+                  <input type="checkbox" class="js-toggle-accessories">
+                  Trae accesorios
+                </label>
+                <div class="toggle-target" data-accessories-target hidden>
+                  <label style="margin-top:8px;">Accesorios recibidos</label>
+                  {{ form.accessories_notes }}
+                  {% for error in form.accessories_notes.errors %}<div class="muted" style="color:#b91c1c;">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
               {% if form.DELETE %}
                 <span class="device-delete-field">{{ form.DELETE }}</span>
               {% endif %}
@@ -168,6 +195,26 @@
         </div>
         <label style="margin-top:12px;display:block;">Descripci&oacute;n / Falla</label>
         {{ device_formset.empty_form.notes }}
+        <div class="device-toggle" data-toggle-group>
+          <label>
+            <input type="checkbox" class="js-toggle-password">
+            Tiene contraseña / PIN
+          </label>
+          <div class="toggle-target" data-password-target hidden>
+            <label style="margin-top:8px;">Contraseña / PIN</label>
+            {{ device_formset.empty_form.password_notes }}
+          </div>
+        </div>
+        <div class="device-toggle" data-toggle-group>
+          <label>
+            <input type="checkbox" class="js-toggle-accessories">
+            Trae accesorios
+          </label>
+          <div class="toggle-target" data-accessories-target hidden>
+            <label style="margin-top:8px;">Accesorios recibidos</label>
+            {{ device_formset.empty_form.accessories_notes }}
+          </div>
+        </div>
         {% if device_formset.empty_form.DELETE %}
           <span class="device-delete-field">{{ device_formset.empty_form.DELETE }}</span>
         {% endif %}
@@ -328,6 +375,10 @@
       const maxInput = document.getElementById("id_{{ device_formset.prefix }}-MAX_NUM_FORMS");
       const maxForms = maxInput ? parseInt(maxInput.value || "{{ device_formset.max_num }}", 10) : {{ device_formset.max_num }};
       const template = document.getElementById("device-form-template");
+      const toggleSelectors = [
+        {checkbox: ".js-toggle-password", target: "[data-password-target]"},
+        {checkbox: ".js-toggle-accessories", target: "[data-accessories-target]"},
+      ];
 
       function getDeleteInput(formDiv){
         return formDiv.querySelector("input[name$='-DELETE']");
@@ -387,12 +438,43 @@
         container.appendChild(newForm);
         totalInput.value = currentTotal + 1;
         bindRemoveButtons();
+        wireToggleGroups(newForm);
+      }
+
+      function syncToggle(checkbox, target){
+        if (!checkbox || !target) return;
+        const input = target.querySelector("input, textarea");
+        const hasValue = input && input.value && input.value.trim().length > 0;
+        const shouldShow = checkbox.checked || hasValue;
+        target.hidden = !shouldShow;
+        if (!shouldShow && input){
+          input.value = "";
+        }
+      }
+
+      function wireToggleGroups(formDiv){
+        if (!formDiv) return;
+        toggleSelectors.forEach(({checkbox: checkboxSel, target: targetSel}) => {
+          const checkbox = formDiv.querySelector(checkboxSel);
+          const target = formDiv.querySelector(targetSel);
+          if (!checkbox || !target) return;
+          if (checkbox.dataset.bound === "1") return;
+          checkbox.dataset.bound = "1";
+          checkbox.addEventListener("change", () => syncToggle(checkbox, target));
+          // auto-open if prefilled
+          const input = target.querySelector("input, textarea");
+          if (input && input.value && input.value.trim().length > 0){
+            checkbox.checked = true;
+          }
+          syncToggle(checkbox, target);
+        });
       }
 
       if (addButton) {
         addButton.addEventListener("click", addDeviceForm);
       }
       bindRemoveButtons();
+      container.querySelectorAll("[data-device-form]").forEach((formDiv) => wireToggleGroups(formDiv));
     });
   </script>
 </body>

@@ -34,7 +34,9 @@ class Device(models.Model):
     brand = models.CharField(max_length=60, blank=True)
     model = models.CharField(max_length=60, blank=True)
     serial = models.CharField(max_length=120, blank=True, db_index=True)
-    notes = models.TextField(blank=True)
+    notes = models.TextField(blank=True, default="")
+    password_notes = models.TextField(blank=True, default="")
+    accessories_notes = models.TextField(blank=True, default="")
 
     def __str__(self):
         return f"{self.brand} {self.model} ({self.serial})"
