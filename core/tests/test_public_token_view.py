@@ -41,7 +41,7 @@ class PublicTokenViewTests(TestCase):
     def test_public_status_shows_device_description(self):
         url = reverse("public_status", args=[self.order.token])
         response = self.client.get(url)
-        self.assertContains(response, "Descripci&oacute;n / accesorios / falla")
+        self.assertContains(response, "Descripci&oacute;n / falla")
         self.assertContains(response, "Trae cargador y funda.")
 
     def test_public_status_shows_password_and_accessories(self):

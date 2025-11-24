@@ -7,7 +7,7 @@
   <title>Estado de tu equipo</title>
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.5;background:#f9fafb;}
-    .card{border:1px solid #e2e8f0;border-radius:16px;padding:24px 28px;max-width:820px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,0.08);}
+    .card{border:1px solid #e2e8f0;border-radius:16px;padding:24px 28px;max-width:820px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,0.08);page-break-inside:avoid;}
     .muted{color:#666}
     table{border-collapse:collapse;width:100%}
     th,td{border-bottom:1px solid #eee;padding:8px;text-align:left}
@@ -19,7 +19,18 @@
     .device-notes{font-size:13px;color:#475569;margin-top:2px;}
     .device-detail-label{font-weight:400;color:#1f2937;}
     .public-disclaimer{margin-top:20px;background:#f8fafc;border-radius:12px;padding:12px 16px;color:#475569;font-size:13px;line-height:1.4;text-align:center;}
-    @media print {.no-print{display:none}}
+    @media print {
+      @page { size: A4; margin: 10mm; }
+      body{margin:0;background:#fff;}
+      .card{box-shadow:none;max-width:100%;border-radius:8px;padding:16px 18px;}
+      .identity{margin-bottom:12px;}
+      h1{margin:12px 0 8px;}
+      table{font-size:12px;}
+      .device-notes{font-size:12px;}
+      ul{margin-top:6px;margin-bottom:10px;}
+      .public-disclaimer{font-size:12px;margin-top:12px;padding:10px 12px;}
+      .no-print{display:none}
+    }
   </style>
 </head>
 <body>
@@ -41,7 +52,7 @@
               <li style="margin-bottom:6px;">
                 <div>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</div>
                 <div class="device-notes">
-                  Descripci&oacute;n / accesorios / falla:
+                  Descripci&oacute;n / falla:
                   {% if device.notes %}
                     {{ device.notes }}
                   {% else %}
