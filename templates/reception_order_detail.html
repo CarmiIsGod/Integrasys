@@ -83,7 +83,7 @@
       <div class="card">
         <h2>Cliente y equipo</h2>
         <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
-        <p class="muted">Tel: {{ order_customer.phone|default:"—" }} · Email: {{ order_customer.email|default:"—" }}</p>
+        <p class="muted">Tel: {{ order_customer.phone|default:"-" }}{% if order_customer.alt_phone %} / {{ order_customer.alt_phone }}{% endif %} &middot; Email: {{ order_customer.email|default:"-" }}</p>
         <div style="margin-top:8px;">
           <strong>Dispositivos:</strong>
           {% if order_devices %}

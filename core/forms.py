@@ -10,12 +10,29 @@ class MultiFileInput(forms.ClearableFileInput):
 class ReceptionForm(forms.Form):
     customer_name = forms.CharField(label="Nombre", max_length=100)
     customer_phone = forms.CharField(label="Telefono", max_length=30, required=False)
+    customer_alt_phone = forms.CharField(label="Telefono alterno", max_length=30, required=False)
     customer_email = forms.EmailField(label="Email", required=False)
     notes = forms.CharField(label="Notas generales", widget=forms.Textarea, required=False)
 
     def _strip(self, key):
         value = (self.cleaned_data.get(key) or "").strip()
         return re.sub(r"\s+", " ", value)
+
+    def _format_phone(self, digits: str) -> str:
+        if len(digits) <= 3:
+            return digits
+        if len(digits) <= 6:
+            return f"{digits[:3]} {digits[3:]}"
+        return f"{digits[:3]} {digits[3:6]} {digits[6:]}"
+
+    def _clean_phone_field(self, key):
+        phone = self._strip(key)
+        if not phone:
+            return ""
+        digits = re.sub(r"\D", "", phone)
+        if len(digits) != 10:
+            raise forms.ValidationError("El telefono debe tener 10 digitos.")
+        return self._format_phone(digits)
 
     def clean_customer_name(self):
         return self._strip("customer_name")
@@ -24,13 +41,10 @@ class ReceptionForm(forms.Form):
         return (self.cleaned_data.get("notes") or "").strip()
 
     def clean_customer_phone(self):
-        phone = self._strip("customer_phone")
-        if not phone:
-            return ""
-        digits = re.sub(r"\D", "", phone)
-        if len(digits) < 7:
-            raise forms.ValidationError("Captura un telefono valido (7 digitos minimo).")
-        return phone
+        return self._clean_phone_field("customer_phone")
+
+    def clean_customer_alt_phone(self):
+        return self._clean_phone_field("customer_alt_phone")
 
     def clean_customer_email(self):
         email = (self.cleaned_data.get("customer_email") or "").strip()
@@ -39,8 +53,9 @@ class ReceptionForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         phone = cleaned.get("customer_phone", "")
+        alt_phone = cleaned.get("customer_alt_phone", "")
         email = cleaned.get("customer_email", "")
-        if not phone and not email:
+        if not phone and not alt_phone and not email:
             raise forms.ValidationError("Debes capturar al menos un telefono o un correo.")
         return cleaned
 

@@ -31,7 +31,7 @@
     <hr>
     <div class="section">
       <p><strong>Cliente:</strong> {{ order.customer.name|default:"-" }}</p>
-      <p><strong>Teléfono:</strong> {{ order.customer.phone|default:"-" }}</p>
+      <p><strong>Tel&eacute;fono:</strong> {{ order.customer.phone|default:"-" }}{% if order.customer.alt_phone %} / {{ order.customer.alt_phone }}{% endif %}</p>
       <p><strong>Email:</strong> {{ order.customer.email|default:"-" }}</p>
       <hr>
     </div>

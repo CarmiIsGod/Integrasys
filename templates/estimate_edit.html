@@ -8,129 +8,240 @@
   <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <title>Cotizacion orden {{ order.folio }}</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:960px}
-    h1{margin-bottom:4px}
-    .muted{color:#6b7280}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
-    th{background:#f3f4f6}
-    input,textarea,button{padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px}
-    input[type="number"]{width:100px}
-    button.primary{background:#2563eb;color:#fff;border:0;cursor:pointer}
-    button.link{background:transparent;border:0;color:#ef4444;cursor:pointer}
-    .btn{display:inline-block;padding:8px 12px;border-radius:6px;text-decoration:none;background:#6b7280;color:#fff;border:0;cursor:pointer}
-    .btn.secondary{background:#6b7280}
-    .btn.primary{background:#2563eb}
-    .btn-whatsapp{background:#16a34a;color:#fff}
-    .actions{display:flex;gap:12px;align-items:center;margin-top:12px}
-    a.btn{text-decoration:none}
-    .summary{margin-top:20px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb}
-    form.inline{display:inline}
-    #add-row{margin-top:8px}
-    .table-wrapper{overflow-x:auto}
-    @media(max-width:768px){
-      body{margin:12px;}
-      table{min-width:600px;}
+    :root{
+      --primary:#1d4ed8;
+      --primary-dark:#1e3a8a;
+      --surface:#ffffff;
+      --muted:#64748b;
+      --border:#e2e8f0;
+      --bg:#f5f7fb;
+      --success:#16a34a;
+    }
+    *{box-sizing:border-box;}
+    body{
+      font-family:Segoe UI,Arial,sans-serif;
+      margin:0;
+      background:radial-gradient(circle at 12% 20%, #eef2ff 0, transparent 25%), var(--bg);
+      color:#0f172a;
+      min-height:100vh;
+    }
+    main{
+      max-width:1040px;
+      margin:0 auto;
+      padding:20px 16px 32px;
+    }
+    h1{margin:0;font-size:28px;}
+    .muted{color:var(--muted);}
+    .toolbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:16px;
+      flex-wrap:wrap;
+    }
+    .nav-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:#e0e7ff;
+      color:#1e3a8a;
+      font-weight:600;
+    }
+    .card{
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:16px;
+      box-shadow:0 10px 30px rgba(15,23,42,0.06);
+    }
+    table{width:100%;border-collapse:collapse;margin-top:12px;}
+    th,td{border:1px solid var(--border);padding:10px;text-align:left;}
+    th{background:#eef2ff;color:#1d4ed8;font-size:13px;letter-spacing:0.3px;}
+    input,textarea,button{
+      padding:10px;
+      border:1px solid var(--border);
+      border-radius:10px;
+      font-size:14px;
+      font-family:inherit;
+    }
+    input[type="number"]{width:100px;}
+    textarea{width:100%;resize:vertical;min-height:90px;}
+    button.primary,.btn.primary{background:var(--primary);color:#fff;border:0;cursor:pointer;}
+    button.primary:hover,.btn.primary:hover{background:var(--primary-dark);}
+    button.link{background:transparent;border:0;color:#ef4444;cursor:pointer;text-decoration:underline;}
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:10px 14px;
+      border-radius:12px;
+      text-decoration:none;
+      background:#0f172a;
+      color:#fff;
+      border:0;
+      cursor:pointer;
+      font-weight:600;
+    }
+    .btn.secondary{background:#475569;}
+    .btn-ghost{background:#e2e8f0;color:#0f172a;}
+    .btn-whatsapp{background:var(--success);color:#fff;}
+    .actions{display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;}
+    .summary{
+      margin-top:20px;
+      background:#f8fbff;
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:14px;
+      display:grid;
+      gap:6px;
+    }
+    form.inline{display:inline;}
+    #add-row{margin-top:12px;}
+    .table-wrapper{overflow-x:auto;}
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:#e2e8f0;
+      color:#0f172a;
+      font-size:13px;
+      font-weight:600;
+    }
+    .section{margin-top:18px;}
+    @media(max-width:820px){
+      main{padding:16px;}
+      table{min-width:640px;}
       .actions{flex-direction:column;align-items:stretch;}
       .actions .btn,.actions button{width:100%;text-align:center;}
       input[type="number"]{width:100%;}
+      .toolbar{flex-direction:column;align-items:flex-start;}
     }
   </style>
 </head>
 <body>
-  <h1>Cotizacion orden {{ order.folio }}</h1>
-  <div class="muted">Estado: {{ status_label }}</div>
-
-  {% if messages %}
-    <div style="margin-top:8px">
-      {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
-    </div>
-  {% endif %}
-
-  <form method="post" id="estimate-form">
-    {% csrf_token %}
-    <div class="table-wrapper">
-    <table>
-      <thead>
-        <tr>
-          <th>Descripcion</th>
-          <th style="width:100px">Cantidad</th>
-          <th style="width:140px">Precio unitario</th>
-          <th style="width:160px">SKU (opcional)</th>
-          <th style="width:80px">Acciones</th>
-        </tr>
-      </thead>
-      <tbody id="items-body">
-        {% for item in items %}
-        <tr>
-          <td><input name="description" value="{{ item.description }}" required></td>
-          <td><input name="qty" type="number" min="1" value="{{ item.qty }}" required></td>
-          <td><input name="unit_price" type="number" min="0" step="0.01" value="{{ item.unit_price }}" required></td>
-          <td><input name="inventory_sku" list="inventory-skus" value="{{ item.inventory_sku }}" placeholder="SKU"></td>
-          <td><button type="button" class="link remove-row">Quitar</button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    <button type="button" id="add-row" class="primary">Agregar partida</button>
-
-    <div style="margin-top:16px">
-      <label for="note"><b>Nota para el cliente</b></label>
-      <textarea id="note" name="note" rows="3" style="width:100%;margin-top:6px" placeholder="Detalle adicional opcional">{{ note }}</textarea>
+  <main>
+    <div class="toolbar">
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <h1>Cotizacion orden {{ order.folio }}</h1>
+        <div class="pill">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"></path><path d="m5 12 7-7 7 7"></path></svg>
+          Estado: {{ status_label }}
+        </div>
+      </div>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="{% url 'reception_home' %}">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5V20a1 1 0 0 1-1 1h-5.5V14h-5V21H4a1 1 0 0 1-1-1z"></path></svg>
+          Inicio
+        </a>
+        <a class="btn btn-ghost" href="{% url 'order_detail' order.pk %}">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
+          Volver a la orden
+        </a>
+      </div>
     </div>
 
-    <div class="actions">
-      <button type="submit" class="primary" data-clear-draft="1">Guardar cotizacion</button>
-      <a class="btn" href="{% url 'order_detail' order.pk %}">Volver a la orden</a>
-    </div>
-  </form>
-
-  <div class="summary">
-    <div><b>Subtotal guardado:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
-    <div><b>IVA guardado:</b> ${{ estimate.tax|floatformat:2 }}</div>
-    <div><b>Total guardado:</b> ${{ estimate.total|floatformat:2 }}</div>
-    <div class="muted">IVA aplicado: {% if estimate.apply_tax %}S&iacute;{% else %}No{% endif %}</div>
-    <form method="post" class="inline" style="margin-top:12px">
-      {% csrf_token %}
-      <input type="hidden" name="toggle_tax" value="1">
-      <button type="submit" class="btn {% if estimate.apply_tax %}secondary{% else %}primary{% endif %}" data-action="toggle-iva">
-        {% if estimate.apply_tax %}Quitar IVA{% else %}Agregar IVA{% endif %}
-      </button>
-    </form>
-  </div>
-
-  <div class="actions" style="margin-top:12px">
-    {% if has_saved_items %}
-      <form method="post" action="{% url 'estimate_send' order.pk %}" class="inline">
-        {% csrf_token %}
-        <button type="submit" class="primary" data-clear-draft="1">Enviar por correo</button>
-      </form>
-      <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}" class="inline">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-whatsapp" data-clear-draft="1">Enviar por WhatsApp</button>
-      </form>
+    {% if messages %}
+      <div style="margin-top:8px">
+        {% for m in messages %}<div class="muted">{{ m }}</div>{% endfor %}
+      </div>
     {% endif %}
-    {% if public_estimate_url %}
-      <a class="btn" href="{{ public_estimate_url }}" target="_blank">Ver enlace publico</a>
-    {% endif %}
-  </div>
 
-  <datalist id="inventory-skus">
-    {% for item in inventory_items %}
-      <option value="{{ item.sku }}">{{ item.name }}</option>
-    {% endfor %}
-  </datalist>
+    <div class="card section">
+      <form method="post" id="estimate-form">
+        {% csrf_token %}
+        <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Descripcion</th>
+              <th style="width:110px">Cantidad</th>
+              <th style="width:150px">Precio unitario</th>
+              <th style="width:170px">SKU (opcional)</th>
+              <th style="width:90px">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="items-body">
+            {% for item in items %}
+            <tr>
+              <td><input name="description" value="{{ item.description }}" required></td>
+              <td><input name="qty" type="number" min="1" value="{{ item.qty }}" required></td>
+              <td><input name="unit_price" type="number" min="0" step="0.01" value="{{ item.unit_price }}" required></td>
+              <td><input name="inventory_sku" list="inventory-skus" value="{{ item.inventory_sku }}" placeholder="SKU"></td>
+              <td><button type="button" class="link remove-row">Quitar</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <button type="button" id="add-row" class="btn primary">Agregar partida</button>
 
-  <template id="row-template">
-    <tr>
-      <td><input name="description" required></td>
-      <td><input name="qty" type="number" min="1" value="1" required></td>
-      <td><input name="unit_price" type="number" min="0" step="0.01" value="0.00" required></td>
-      <td><input name="inventory_sku" list="inventory-skus" placeholder="SKU"></td>
-      <td><button type="button" class="link remove-row">Quitar</button></td>
-    </tr>
-  </template>
+        <div class="section">
+          <label for="note"><b>Nota para el cliente</b></label>
+          <textarea id="note" name="note" rows="3" style="margin-top:6px" placeholder="Detalle adicional opcional">{{ note }}</textarea>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn primary" data-clear-draft="1">Guardar cotizacion</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="summary">
+      <div class="badge">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+        Totales guardados
+      </div>
+      <div><b>Subtotal:</b> ${{ estimate.subtotal|floatformat:2 }}</div>
+      <div><b>IVA:</b> ${{ estimate.tax|floatformat:2 }}</div>
+      <div><b>Total:</b> ${{ estimate.total|floatformat:2 }}</div>
+      <div class="muted">IVA aplicado: {% if estimate.apply_tax %}S&iacute;{% else %}No{% endif %}</div>
+      <form method="post" class="inline" style="margin-top:6px">
+        {% csrf_token %}
+        <input type="hidden" name="toggle_tax" value="1">
+        <button type="submit" class="btn {% if estimate.apply_tax %}secondary{% else %}primary{% endif %}" data-action="toggle-iva">
+          {% if estimate.apply_tax %}Quitar IVA{% else %}Agregar IVA{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <div class="actions" style="margin-top:12px">
+      {% if has_saved_items %}
+        <form method="post" action="{% url 'estimate_send' order.pk %}" class="inline">
+          {% csrf_token %}
+          <button type="submit" class="btn primary" data-clear-draft="1">Enviar por correo</button>
+        </form>
+        <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}" class="inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-whatsapp" data-clear-draft="1">Enviar por WhatsApp</button>
+        </form>
+      {% endif %}
+      {% if public_estimate_url %}
+        <a class="btn btn-ghost" href="{{ public_estimate_url }}" target="_blank">Ver enlace publico</a>
+      {% endif %}
+    </div>
+
+    <datalist id="inventory-skus">
+      {% for item in inventory_items %}
+        <option value="{{ item.sku }}">{{ item.name }}</option>
+      {% endfor %}
+    </datalist>
+
+    <template id="row-template">
+      <tr>
+        <td><input name="description" required></td>
+        <td><input name="qty" type="number" min="1" value="1" required></td>
+        <td><input name="unit_price" type="number" min="0" step="0.01" value="0.00" required></td>
+        <td><input name="inventory_sku" list="inventory-skus" placeholder="SKU"></td>
+        <td><button type="button" class="link remove-row">Quitar</button></td>
+      </tr>
+    </template>
+  </main>
 
   <script>
     (function () {

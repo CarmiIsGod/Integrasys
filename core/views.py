@@ -175,8 +175,13 @@ def _record_status_update(order, *, channel="status_change", ok=True, extra_payl
         logger.exception("Error registrando notificacion de estado")
 
 
-def _create_customer(name, phone, email):
-    return Customer.objects.create(name=name, phone=phone or "", email=email or "")
+def _create_customer(name, phone, email, alt_phone=""):
+    return Customer.objects.create(
+        name=name,
+        phone=phone or "",
+        alt_phone=alt_phone or "",
+        email=email or "",
+    )
 
 
 def _ensure_device(customer, *, brand, model, serial, notes, password_notes="", accessories_notes=""):
@@ -1412,17 +1417,20 @@ def reception_customer_search(request):
         Q(name__icontains=query)
         | Q(email__icontains=query)
         | Q(phone__icontains=query)
+        | Q(alt_phone__icontains=query)
     )
     customers = (
         Customer.objects.filter(filters)
         .order_by("name", "id")
-        .only("id", "name", "email", "phone")[:10]
+        .only("id", "name", "email", "phone", "alt_phone")[:10]
     )
     results = []
     for customer in customers:
+        phones = [p for p in (customer.phone, customer.alt_phone) if p]
+        phone_label = " / ".join(phones) if phones else "Sin telefono"
         label_parts = [
             customer.name or "Sin nombre",
-            customer.phone or "Sin teléfono",
+            phone_label,
             customer.email or "Sin correo",
         ]
         results.append(
@@ -1430,8 +1438,9 @@ def reception_customer_search(request):
                 "id": customer.pk,
                 "name": customer.name,
                 "phone": customer.phone,
+                "alt_phone": customer.alt_phone,
                 "email": customer.email,
-                "label": " · ".join(label_parts),
+                "label": " | ".join(label_parts),
             }
         )
     return JsonResponse({"results": results})
@@ -1440,7 +1449,7 @@ def reception_customer_search(request):
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_new_order(request):
-    prefill = {"name": "", "phone": "", "email": "", "notes": "", "customer_id": ""}
+    prefill = {"name": "", "phone": "", "alt_phone": "", "email": "", "notes": "", "customer_id": ""}
     form = ReceptionForm()
     device_formset = ReceptionDeviceFormSet(prefix="devices", initial=[{}])
     if request.method == "POST":
@@ -1448,6 +1457,7 @@ def reception_new_order(request):
         if "name" in data and "customer_name" not in data:
             data["customer_name"] = data.get("name", "")
             data["customer_phone"] = data.get("phone", "")
+            data["customer_alt_phone"] = data.get("alt_phone", "")
             data["customer_email"] = data.get("email", "")
             data["notes"] = data.get("notes", "")
         if "devices-TOTAL_FORMS" not in data:
@@ -1475,6 +1485,7 @@ def reception_new_order(request):
             cleaned = form.cleaned_data
             name = cleaned["customer_name"]
             phone = cleaned.get("customer_phone") or ""
+            alt_phone = cleaned.get("customer_alt_phone") or ""
             email = cleaned.get("customer_email") or ""
             notes = cleaned.get("notes") or ""
 
@@ -1503,6 +1514,7 @@ def reception_new_order(request):
                 prefill = {
                     "name": data.get("name") or data.get("customer_name", ""),
                     "phone": data.get("phone") or data.get("customer_phone", ""),
+                    "alt_phone": data.get("alt_phone") or data.get("customer_alt_phone", ""),
                     "email": data.get("email") or data.get("customer_email", ""),
                     "notes": data.get("notes") or "",
                     "customer_id": customer_id_value,
@@ -1519,6 +1531,7 @@ def reception_new_order(request):
                     prefill = {
                         "name": data.get("name") or data.get("customer_name", ""),
                         "phone": data.get("phone") or data.get("customer_phone", ""),
+                        "alt_phone": data.get("alt_phone") or data.get("customer_alt_phone", ""),
                         "email": data.get("email") or data.get("customer_email", ""),
                         "notes": data.get("notes") or "",
                         "customer_id": "",
@@ -1527,7 +1540,23 @@ def reception_new_order(request):
                     return render(request, "reception/new_order.html", context)
 
             with transaction.atomic():
-                customer = selected_customer or _create_customer(name, phone, email)
+                customer = selected_customer
+                if customer is None:
+                    customer = _create_customer(name, phone, email, alt_phone)
+                else:
+                    updates = []
+                    if phone and not customer.phone:
+                        customer.phone = phone
+                        updates.append("phone")
+                    if alt_phone and not customer.alt_phone:
+                        customer.alt_phone = alt_phone
+                        updates.append("alt_phone")
+                    if email and not customer.email:
+                        customer.email = email
+                        updates.append("email")
+                    if updates:
+                        customer.save(update_fields=updates)
+
                 created_devices = []
                 for entry in device_entries:
                     created_devices.append(
@@ -1588,6 +1617,7 @@ def reception_new_order(request):
         prefill = {
             "name": data.get("name") or data.get("customer_name", ""),
             "phone": data.get("phone") or data.get("customer_phone", ""),
+            "alt_phone": data.get("alt_phone") or data.get("customer_alt_phone", ""),
             "email": data.get("email") or data.get("customer_email", ""),
             "notes": data.get("notes") or "",
             "customer_id": customer_id_value,

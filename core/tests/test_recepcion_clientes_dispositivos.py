@@ -24,6 +24,7 @@ class ReceptionCustomerDeviceTests(TestCase):
         base = {
             "customer_name": "Cliente Demo",
             "customer_phone": "5551234567",
+            "customer_alt_phone": "",
             "customer_email": "demo@example.com",
             "notes": "Datos generales",
             "devices-TOTAL_FORMS": "1",
@@ -144,6 +145,24 @@ class ReceptionCustomerDeviceTests(TestCase):
             context_messages = list(response.context["messages"])
         self.assertTrue(context_messages)
         self.assertTrue(any("telefono" in m.message.lower() for m in context_messages))
+
+    def test_allows_alt_phone_when_primary_missing(self):
+        payload = self._payload(customer_phone="", customer_email="", customer_alt_phone="5588990011")
+        response = self.client.post(self.url, payload)
+        self.assertEqual(response.status_code, 302)
+        customer = Customer.objects.latest("id")
+        self.assertEqual(customer.alt_phone, "558 899 0011")
+        self.assertEqual(customer.phone, "")
+
+    def test_rejects_phone_shorter_than_10_digits(self):
+        payload = self._payload(customer_phone="12345")
+        response = self.client.post(self.url, payload, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ServiceOrder.objects.count(), 0)
+        context_messages = []
+        if response.context and "messages" in response.context:
+            context_messages = list(response.context["messages"])
+        self.assertTrue(any("10 dig" in m.message for m in context_messages))
 
     def test_customer_devices_view_lists_orders(self):
         response = self.client.post(self.url, self._payload())

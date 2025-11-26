@@ -28,6 +28,8 @@
     label{display:block;font-weight:600;margin-bottom:4px;color:#1e293b;}
     input,textarea{width:100%;padding:9px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;box-sizing:border-box;}
     textarea{resize:vertical;min-height:120px;}
+    .input-hint{color:#b91c1c;font-size:13px;margin-top:4px;}
+    .has-error{border-color:#b91c1c;box-shadow:0 0 0 1px #fecdd3;}
     .actions{display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;}
     .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
@@ -92,7 +94,15 @@
           <label>Nombre*</label>
           <input name="name" value="{{ prefill.name }}" required placeholder="Nombre completo">
           <label style="margin-top:12px;">Tel&eacute;fono</label>
-          <input name="phone" value="{{ prefill.phone }}" placeholder="Opcional">
+          <div>
+            <input name="phone" value="{{ prefill.phone }}" placeholder="10 d&iacute;gitos" inputmode="tel" maxlength="14" autocomplete="tel">
+            <div class="input-hint" data-error-for="phone" hidden>Debe tener 10 d&iacute;gitos.</div>
+          </div>
+          <label style="margin-top:12px;">Tel&eacute;fono adicional</label>
+          <div>
+            <input name="alt_phone" value="{{ prefill.alt_phone }}" placeholder="Opcional (10 d&iacute;gitos)" inputmode="tel" maxlength="14" autocomplete="tel">
+            <div class="input-hint" data-error-for="alt_phone" hidden>Debe tener 10 d&iacute;gitos.</div>
+          </div>
           <label style="margin-top:12px;">Email</label>
           <input type="email" name="email" value="{{ prefill.email }}" placeholder="Opcional">
           <p class="muted" style="margin-top:10px;">Si los datos coinciden con un cliente existente se reutilizar&aacute;n autom&aacute;ticamente.</p>
@@ -234,10 +244,49 @@
         const selectionPill = document.getElementById("customer-selected-pill");
         const nameInput = document.querySelector('input[name="name"]');
         const phoneInput = document.querySelector('input[name="phone"]');
+        const altPhoneInput = document.querySelector('input[name="alt_phone"]');
         const emailInput = document.querySelector('input[name="email"]');
+        const formEl = document.getElementById("new-order-form");
         let debounceTimer = null;
         let lastQuery = "";
         let fillingFromSelection = false;
+
+        function formatPhoneValue(rawValue){
+          const digits = (rawValue || "").replace(/\D/g, "").slice(0, 10);
+          if (digits.length <= 3) return digits;
+          if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+          return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+        }
+
+        function validatePhoneInput(input, errorNode){
+          if (!input) return true;
+          const digits = (input.value || "").replace(/\D/g, "");
+          const hasValue = digits.length > 0;
+          const isValid = !hasValue || digits.length === 10;
+          if (errorNode) {
+            errorNode.hidden = isValid;
+          }
+          input.classList.toggle("has-error", !isValid);
+          return isValid;
+        }
+
+        function bindPhoneField(input, errorSelector){
+          if (!input) return null;
+          const errorNode = document.querySelector(errorSelector);
+          const sync = () => {
+            input.value = formatPhoneValue(input.value);
+            return validatePhoneInput(input, errorNode);
+          };
+          input.addEventListener("input", sync);
+          input.addEventListener("blur", sync);
+          sync();
+          return {input, errorNode, sync};
+        }
+
+        const phoneFields = [
+          bindPhoneField(phoneInput, '[data-error-for="phone"]'),
+          bindPhoneField(altPhoneInput, '[data-error-for="alt_phone"]'),
+        ].filter(Boolean);
 
         function hideResults(){
           if (!resultsBox) return;
@@ -285,12 +334,14 @@
             button.dataset.id = item.id;
             button.dataset.name = item.name || "";
             button.dataset.phone = item.phone || "";
+            button.dataset.altPhone = item.alt_phone || "";
             button.dataset.email = item.email || "";
             button.dataset.label = item.label || "";
             const title = document.createElement("strong");
             title.textContent = item.name || "Sin nombre";
             const meta = document.createElement("span");
-            meta.textContent = [item.phone || "Sin telefono", item.email || "Sin correo"].filter(Boolean).join(" | ");
+            const phones = [item.phone, item.alt_phone].filter(Boolean).join(" / ");
+            meta.textContent = [(phones || "Sin telefono"), item.email || "Sin correo"].filter(Boolean).join(" | ");
             button.appendChild(title);
             button.appendChild(meta);
             fragment.appendChild(button);
@@ -323,8 +374,12 @@
           fillingFromSelection = true;
           if (nameInput) nameInput.value = item.dataset.name || "";
           if (phoneInput) phoneInput.value = item.dataset.phone || "";
+          if (altPhoneInput) altPhoneInput.value = item.dataset.altPhone || "";
           if (emailInput) emailInput.value = item.dataset.email || "";
           fillingFromSelection = false;
+          phoneFields.forEach((ref) => {
+            if (ref && ref.sync) ref.sync();
+          });
           const label = item.dataset.label || item.dataset.name || "Cliente existente seleccionado";
           showSelection(label);
           searchInput.value = label;
@@ -335,7 +390,7 @@
           resultsBox.addEventListener("click", handleResultClick);
         }
 
-        [nameInput, phoneInput, emailInput].forEach((input) => {
+        [nameInput, phoneInput, altPhoneInput, emailInput].forEach((input) => {
           if (!input) return;
           input.addEventListener("input", () => {
             if (fillingFromSelection) return;
@@ -368,6 +423,21 @@
 
         if (customerIdInput && customerIdInput.value) {
           showSelection(nameInput && nameInput.value ? `Cliente: ${nameInput.value}` : "Cliente existente seleccionado");
+        }
+
+        if (formEl) {
+          formEl.addEventListener("submit", (event) => {
+            let phonesOk = true;
+            phoneFields.forEach((ref) => {
+              if (!ref) return;
+              const isValid = ref.sync ? ref.sync() : true;
+              if (!isValid) phonesOk = false;
+            });
+            if (!phonesOk) {
+              event.preventDefault();
+              alert("Cada telefono debe tener exactamente 10 digitos.");
+            }
+          });
         }
       }
 

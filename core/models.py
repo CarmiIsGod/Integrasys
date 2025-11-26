@@ -23,6 +23,7 @@ from django.dispatch import receiver
 class Customer(models.Model):
     name = models.CharField(max_length=120, db_index=True)
     phone = models.CharField(max_length=30, blank=True, db_index=True)
+    alt_phone = models.CharField(max_length=30, blank=True, db_index=True, default="")
     email = models.EmailField(blank=True, db_index=True)
 
     def __str__(self):
