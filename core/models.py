@@ -357,8 +357,8 @@ class EstimateItem(models.Model):
 
 class Notification(models.Model):
     order = models.ForeignKey(ServiceOrder, null=True, blank=True, on_delete=models.CASCADE, db_index=True)
-    kind = models.CharField(max_length=20, db_index=True)     
-    channel = models.CharField(max_length=20, db_index=True)  
+    kind = models.CharField(max_length=40, db_index=True)
+    channel = models.CharField(max_length=40, db_index=True)
     ok = models.BooleanField(default=False)
     payload = models.JSONField(default=dict, blank=True)
     title = models.CharField(max_length=140, blank=True)
