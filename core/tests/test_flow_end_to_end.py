@@ -9,6 +9,7 @@ from core.models import (
     Customer,
     Device,
     Estimate,
+    EstimateItem,
     InventoryItem,
     InventoryMovement,
     Notification,
@@ -58,6 +59,12 @@ class FlowEndToEndTests(TestCase):
         resp = self.client.post(estimate_url, estimate_payload)
         self.assertEqual(resp.status_code, 302)
         estimate = Estimate.objects.get(order=order)
+        # Marcar partidas como aceptadas para permitir cobro
+        for item in estimate.items.all():
+            item.status = EstimateItem.Status.ACCEPTED
+            item.save(update_fields=["status"])
+        estimate.recompute_status_from_items(save=True)
+        order.refresh_from_db()
 
         resp = self.client.post(reverse("change_status", args=[order.pk]), {"target": ServiceOrder.Status.IN_REVIEW})
         self.assertEqual(resp.status_code, 302)
@@ -65,7 +72,10 @@ class FlowEndToEndTests(TestCase):
         self.assertEqual(resp.status_code, 302)
 
         payment_url = reverse("add_payment", args=[order.pk])
-        resp = self.client.post(payment_url, {"amount": "500.00", "method": "Efectivo", "reference": "PAGO-1"})
+        resp = self.client.post(
+            payment_url,
+            {"amount": f"{order.balance}", "method": "Efectivo", "reference": "PAGO-1"},
+        )
         self.assertEqual(resp.status_code, 302)
 
         resp = self.client.post(reverse("change_status", args=[order.pk]), {"target": ServiceOrder.Status.DELIVERED})

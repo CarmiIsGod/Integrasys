@@ -1,49 +1,75 @@
-﻿{% load static %}
+{% load static %}
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>Recibo - {{ order.folio }}</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <style>
     @page { margin: 16mm 14mm; }
     body { font-family: "DejaVu Sans", "Segoe UI", Arial, sans-serif; font-size: 11pt; color: #111827; margin:0; }
-    .wrapper { max-width: 640px; margin: 0 auto; }
+    .wrapper { max-width: 700px; margin: 0 auto; }
     .section { margin-bottom: 12pt; }
     .section h2 { font-size: 12pt; margin: 0 0 4pt; }
-    .muted { color:#6b7280; font-size:10pt; }
+    .muted { color:#4B5563; font-size:10pt; }
     .devices { margin:0; padding-left:18pt; }
-    hr { border:none; border-top:1px solid #d1d5db; margin:8pt 0; }
+    hr { border:none; border-top:1px solid #d1d5db; margin:10pt 0; }
     .qr img { width:110pt; height:110pt; }
+    .identity { display:flex; justify-content:space-between; align-items:flex-start; gap:12pt; }
+    .brand img { height:46pt; width:auto; display:block; }
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-weight:700;font-size:10pt;color:#0f172a;border:1px solid #e5e7eb;}
+    .status-NEW{background:#3882F6;color:#fff;border-color:#3882F6;}
+    .status-REV{background:#FACC15;color:#92400e;border-color:#FACC15;}
+    .status-WAI{background:#FB923C;color:#7c2d12;border-color:#FB923C;}
+    .status-AUTH{background:#EF4444;color:#fff;border-color:#EF4444;}
+    .status-READY{background:#22C55E;color:#0f172a;border-color:#22C55E;}
+    .status-DONE{background:#9CA3AF;color:#111827;border-color:#9CA3AF;}
+    .device-summary{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6pt;}
+    .device-summary li{padding:8pt 10pt;border:1px solid #e5e7eb;border-radius:10pt;background:#f8fafc;}
+    .device-summary strong{color:#111827;}
   </style>
 </head>
 <body>
   <div class="wrapper">
-    <div class="section" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12pt;">
-      <div>
-        <h2>Recibo de recepción</h2>
-        <p><strong>Folio:</strong> {{ order.folio }}</p>
-        <p><strong>Fecha:</strong> {{ order.checkin_at|date:"Y-m-d H:i" }}</p>
+    <div class="section identity">
+      <div class="brand">
+        <img src="{% static 'img/brand/imago-azul.png?v=2' %}" alt="Integrasys">
       </div>
       <div class="qr">
         <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR">
       </div>
     </div>
-    <hr>
+    <div class="section" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12pt;">
+      <div>
+        <h2>Recibo de recepción</h2>
+        <p><strong>Folio:</strong> {{ order.folio }}</p>
+        <p><strong>Fecha:</strong> {{ order.checkin_at|date:"d-m-Y H:i" }}</p>
+        <p><strong>Estado actual:</strong>
+          <span class="status-badge status-{{ order.status }}">{{ order.get_status_display }}</span>
+        </p>
+      </div>
+    </div>
     <div class="section">
       <p><strong>Cliente:</strong> {{ order.customer.name|default:"-" }}</p>
-      <p><strong>Tel&eacute;fono:</strong> {{ order.customer.phone|default:"-" }}{% if order.customer.alt_phone %} / {{ order.customer.alt_phone }}{% endif %}</p>
+      <p><strong>Teléfono:</strong> {{ order.customer.phone|default:"-" }}{% if order.customer.alt_phone %} / {{ order.customer.alt_phone }}{% endif %}</p>
       <p><strong>Email:</strong> {{ order.customer.email|default:"-" }}</p>
       <hr>
     </div>
     <div class="section">
-      <p><strong>Equipos:</strong></p>
+      <h2 style="margin-bottom:6pt;">Resumen de equipo</h2>
       {% with devices=order.devices.all %}
         {% if devices %}
-          <ul class="devices">
-            {% for device in devices %}<li>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</li>{% endfor %}
+          <ul class="device-summary">
+            {% for device in devices %}
+              <li>
+                <div><strong>Equipo:</strong> {{ device.brand }} {{ device.model }}{% if device.serial %} (Serie {{ device.serial }}){% endif %}</div>
+                <div class="muted"><strong>Falla:</strong> {% if device.notes %}{{ device.notes }}{% else %}Falla no reportada.{% endif %}</div>
+                <div class="muted"><strong>Accesorios:</strong> {% if device.accessories_notes %}{{ device.accessories_notes }}{% else %}Sin accesorios declarados.{% endif %}</div>
+              </li>
+            {% endfor %}
           </ul>
         {% else %}
-          <p>(sin dispositivos)</p>
+          <p class="muted">(sin dispositivos)</p>
         {% endif %}
       {% endwith %}
       <hr>
@@ -52,8 +78,8 @@
       <p><strong>Último estado:</strong></p>
       {% with last_entry=order.history.last %}
         {% if last_entry %}
-          <p>Fecha: {{ last_entry.created_at|date:"Y-m-d H:i" }}</p>
-          <p>Estado: {{ last_entry.get_status_display }}</p>
+          <p>Fecha: {{ last_entry.created_at|date:"d-m-Y H:i" }}</p>
+          <p>Estado: <span class="status-badge status-{{ last_entry.status }}">{{ last_entry.get_status_display }}</span></p>
         {% else %}
           <p>(aún no hay historial)</p>
         {% endif %}
@@ -68,4 +94,3 @@
   </div>
 </body>
 </html>
-

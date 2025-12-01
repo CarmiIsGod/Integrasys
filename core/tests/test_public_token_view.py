@@ -32,6 +32,7 @@ class PublicTokenViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Recibido")
         self.assertContains(response, "En revision")
+        self.assertContains(response, "badge")
 
     def test_public_status_invalid_token(self):
         bad_url = reverse("public_status", args=["00000000-0000-0000-0000-000000000000"])
@@ -41,8 +42,10 @@ class PublicTokenViewTests(TestCase):
     def test_public_status_shows_device_description(self):
         url = reverse("public_status", args=[self.order.token])
         response = self.client.get(url)
-        self.assertContains(response, "Descripci&oacute;n / falla")
         self.assertContains(response, "Trae cargador y funda.")
+        self.assertContains(response, "Equipo:")
+        self.assertContains(response, "Falla:")
+        self.assertContains(response, "Accesorios:")
 
     def test_public_status_shows_password_and_accessories(self):
         url = reverse("public_status", args=[self.order.token])

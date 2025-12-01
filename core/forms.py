@@ -115,7 +115,7 @@ ReceptionDeviceFormSet = formset_factory(
 
 
 # === INTEGRASYS PATCH: ATTACHMENTS FORM ===
-from core.models import Attachment, InventoryItem
+from core.models import Attachment, InventoryItem, Customer
 
 
 class AttachmentForm(forms.ModelForm):
@@ -152,3 +152,33 @@ class InventoryItemForm(forms.ModelForm):
     def clean_location(self):
         location = self.cleaned_data.get("location", "")
         return location.strip()
+
+
+class CustomerForm(forms.ModelForm):
+    class Meta:
+        model = Customer
+        fields = ["name", "phone", "alt_phone", "email"]
+
+    def _strip(self, key):
+        return (self.cleaned_data.get(key) or "").strip()
+
+    def _clean_phone_field(self, key):
+        raw = self._strip(key)
+        if not raw:
+            return ""
+        digits = re.sub(r"\D", "", raw)
+        if len(digits) != 10:
+            raise forms.ValidationError("El telefono debe tener 10 digitos.")
+        return f"{digits[:3]} {digits[3:6]} {digits[6:]}"
+
+    def clean_name(self):
+        return self._strip("name")
+
+    def clean_phone(self):
+        return self._clean_phone_field("phone")
+
+    def clean_alt_phone(self):
+        return self._clean_phone_field("alt_phone")
+
+    def clean_email(self):
+        return self._strip("email").lower()

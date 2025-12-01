@@ -27,7 +27,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 import logging
 
-from .forms import ReceptionForm, ReceptionDeviceFormSet, InventoryItemForm, AttachmentForm
+from .forms import ReceptionForm, ReceptionDeviceFormSet, InventoryItemForm, AttachmentForm, CustomerForm
 from .models import (
     Customer,
     Device,
@@ -60,6 +60,7 @@ from .utils import (
     log_status_snapshot,
     send_order_status_email,
     format_csv_datetime,
+    notify_estimate_item_decision,
 )
 
 
@@ -73,6 +74,14 @@ logger = logging.getLogger(__name__)
 def _estimate_status_label(estimate):
     if not estimate:
         return "Sin cotizacion"
+    status_labels = {
+        Estimate.Status.PENDING: "Pendiente",
+        Estimate.Status.CLOSED_ACCEPTED: "Cerrada · aprobada",
+        Estimate.Status.CLOSED_PARTIAL: "Cerrada · aceptacion parcial",
+        Estimate.Status.CLOSED_REJECTED: "Cerrada · rechazada",
+    }
+    if getattr(estimate, "status", None) in status_labels:
+        return status_labels[estimate.status]
     if estimate.approved_at:
         return f"Aprobada ({timezone.localtime(estimate.approved_at).strftime('%Y-%m-%d %H:%M')})"
     if estimate.declined_at:
@@ -135,6 +144,14 @@ def _build_estimate_message(order, customer, public_url):
     if not customer_name:
         customer_name = "cliente"
     return f"Hola {customer_name},\nRevisa la cotizacion {order.folio}: {public_url}"
+
+
+def _estimate_item_counts(estimate):
+    try:
+        rows = estimate.items.values("status").annotate(total=models.Count("id"))
+    except Exception:
+        return {}
+    return {row["status"]: row["total"] for row in rows}
 
 
 def _resolve_order_folio(order):
@@ -390,8 +407,22 @@ def dashboard(request):
     for entry in qs.values("status").annotate(total=Count("id")):
         counts[entry["status"]] = entry["total"]
 
+    status_colors = {
+        ServiceOrder.Status.NEW: "#3B82F6",          # Recibido
+        ServiceOrder.Status.IN_REVIEW: "#FACC15",    # En revision
+        ServiceOrder.Status.WAITING_PARTS: "#FB923C",# En espera de repuestos
+        ServiceOrder.Status.REQUIRES_AUTH: "#EF4444",# Requiere autorizacion
+        ServiceOrder.Status.READY_PICKUP: "#22C55E", # Listo para recoger
+        ServiceOrder.Status.DELIVERED: "#9CA3AF",    # Entregado
+    }
+
     status_cards = [
-        {"code": code, "label": label, "count": counts.get(code, 0)}
+        {
+            "code": code,
+            "label": label,
+            "count": counts.get(code, 0),
+            "color": status_colors.get(code, "#e2e8f0"),
+        }
         for code, label in ServiceOrder.Status.choices
     ]
 
@@ -551,6 +582,7 @@ def receive_stock(request):
     sku = (request.POST.get("sku") or "").strip()
     qty_raw = (request.POST.get("qty") or "").strip()
     reason = (request.POST.get("reason") or "Entrada").strip()
+    movement_type = (request.POST.get("movement_type") or "ENTRY").strip().upper()
     item = InventoryItem.objects.filter(sku=sku).first()
     if not item:
         messages.error(request, f"SKU {sku} no existe.")
@@ -564,10 +596,19 @@ def receive_stock(request):
         messages.error(request, "La cantidad debe ser mayor a 0.")
         return redirect("inventory_list")
 
-    InventoryMovement.objects.create(item=item, delta=qty, reason=reason, author=request.user)
-    item.qty = item.qty + qty
+    delta = qty if movement_type != "OUT" else -qty
+    if movement_type == "OUT" and item.qty + delta < 0:
+        messages.error(request, "No hay suficiente inventario para registrar esta salida.")
+        return redirect("inventory_list")
+
+    InventoryMovement.objects.create(item=item, delta=delta, reason=reason, author=request.user)
+    item.qty = item.qty + delta
     item.save()
-    messages.success(request, f"Entrada registrada: +{qty} de {item.name} (SKU {item.sku}).")
+
+    if movement_type == "OUT":
+        messages.success(request, f"Salida registrada: -{qty} de {item.name} (SKU {item.sku}).")
+    else:
+        messages.success(request, f"Entrada registrada: +{qty} de {item.name} (SKU {item.sku}).")
     return redirect("inventory_list")
 
 
@@ -636,6 +677,50 @@ def inventory_delete(request, pk):
 
 
 @login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+def customer_list(request):
+    q = (request.GET.get("q", "") or "").strip()
+    qs = Customer.objects.all().order_by("name")
+    if q:
+        qs = qs.filter(
+            Q(name__icontains=q)
+            | Q(phone__icontains=q)
+            | Q(alt_phone__icontains=q)
+            | Q(email__icontains=q)
+        )
+    paginator = Paginator(qs, 20)
+    page_number = request.GET.get("page") or 1
+    page_obj = paginator.get_page(page_number)
+    return render(
+        request,
+        "panel/customers_list.html",
+        {"page_obj": page_obj, "q": q},
+    )
+
+
+@login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+def customer_edit(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+    next_url = (request.GET.get("next") or "").strip()
+    if request.method == "POST":
+        form = CustomerForm(request.POST, instance=customer)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Datos del cliente actualizados.")
+            if next_url:
+                return redirect(next_url)
+            return redirect("customer_list")
+    else:
+        form = CustomerForm(instance=customer)
+    return render(
+        request,
+        "panel/customer_edit.html",
+        {"form": form, "customer": customer, "next": next_url},
+    )
+
+
+@login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def list_orders(request):
     q = (request.GET.get("q", "") or "").strip()
@@ -644,6 +729,11 @@ def list_orders(request):
     dto   = (request.GET.get("to", "") or "").strip()
     export = request.GET.get("export") == "1"
     assignee = (request.GET.get("assignee", "") or "").strip()
+    has_user_filters = any(
+        key in request.GET for key in ("status", "q", "from", "to", "assignee", "export")
+    )
+    if not has_user_filters:
+        status = ServiceOrder.Status.NEW
 
     is_superuser = request.user.is_superuser
     is_technician = is_tecnico(request.user)
@@ -750,6 +840,15 @@ def list_orders(request):
     page_obj = paginator.get_page(request.GET.get("page"))
 
     restricted_statuses = {"REV", "WAI", "READY"}
+    status_colors = {
+        ServiceOrder.Status.NEW: "#3B82F6",
+        ServiceOrder.Status.IN_REVIEW: "#FACC15",
+        ServiceOrder.Status.WAITING_PARTS: "#FB923C",
+        ServiceOrder.Status.REQUIRES_AUTH: "#EF4444",
+        ServiceOrder.Status.READY_PICKUP: "#22C55E",
+        ServiceOrder.Status.DELIVERED: "#9CA3AF",
+        ServiceOrder.Status.CANCELLED: "#9ca3af",
+    }
     for o in page_obj.object_list:
         allowed_next = o.allowed_next_statuses()
         if is_technician:
@@ -771,6 +870,7 @@ def list_orders(request):
         msg = f"{base} Detalle: {public_url}"
         phone_value = getattr(customer, "phone", "") if customer else ""
         o.whatsapp_link = build_whatsapp_link(phone_value, msg)
+        o.status_color = status_colors.get(o.status, "#e2e8f0")
 
     context = {
         "page_obj": page_obj,
@@ -788,6 +888,7 @@ def list_orders(request):
         "is_technician": is_technician,
         "is_superuser": is_superuser,
         "export_csv_url": export_csv_url,
+        "status_colors": status_colors,
     }
     context["is_manager"] = is_manager(request.user)
     return render(request, "reception_orders.html", context)
@@ -806,10 +907,19 @@ def order_detail(request, pk):
     is_superuser = request.user.is_superuser
     is_technician = is_tecnico(request.user)
     is_reception = is_recepcion(request.user)
+    is_manager_user = is_gerencia(request.user) or is_superuser
 
     if is_technician:
         allowed_next = [code for code in allowed_next if code in {"REV", "WAI", "READY"}]
 
+    status_colors = {
+        ServiceOrder.Status.NEW: "#3B82F6",
+        ServiceOrder.Status.IN_REVIEW: "#FACC15",
+        ServiceOrder.Status.WAITING_PARTS: "#FB923C",
+        ServiceOrder.Status.REQUIRES_AUTH: "#EF4444",
+        ServiceOrder.Status.READY_PICKUP: "#22C55E",
+        ServiceOrder.Status.DELIVERED: "#9CA3AF",
+    }
     public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
     customer = order.get_customer()
     customer_name = getattr(customer, "name", "") if customer else ""
@@ -822,6 +932,7 @@ def order_detail(request, pk):
         base = f"Hola {friendly_name}, tu orden {order.folio} est\u00e1 {order.get_status_display()}."
     msg = f"{base} Detalle: {public_url}"
     wa_link = build_whatsapp_link(getattr(customer, "phone", "") if customer else "", msg)
+    order.status_color = status_colors.get(order.status, "#94a3b8")
 
     try:
         estimate = order.estimate
@@ -870,10 +981,50 @@ def order_detail(request, pk):
             "can_charge": can_charge,
             "is_technician": is_technician,
             "is_superuser": is_superuser,
+            "is_manager_user": is_manager_user,
             "order_customer": customer,
             "order_devices": order_devices,
+            "status_colors": status_colors,
         },
     )
+
+
+@login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@require_POST
+def order_open_warranty(request, pk):
+    parent = get_object_or_404(ServiceOrder.objects.prefetch_related("devices"), pk=pk)
+    if parent.status != ServiceOrder.Status.DELIVERED:
+        messages.error(request, "Solo puedes abrir garantia desde una orden entregada.")
+        return redirect("order_detail", pk=parent.pk)
+
+    devices = _order_devices(parent)
+    primary_device = devices[0] if devices else parent.device
+    note_text = f"Servicio por garantia de {parent.folio}"
+    with transaction.atomic():
+        new_order = ServiceOrder.objects.create(
+            customer=parent.get_customer(),
+            device=primary_device,
+            notes=note_text,
+            warranty_parent=parent,
+        )
+        if devices:
+            new_order.devices.set(devices)
+    messages.success(request, f"Orden de garantia creada: {new_order.folio}")
+    return redirect("order_detail", pk=new_order.pk)
+
+
+@login_required(login_url="/admin/login/")
+@require_manager
+@require_POST
+def order_cancel(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    try:
+        order.transition_to(ServiceOrder.Status.CANCELLED, author=request.user, author_role=resolve_actor_role(request.user), force=True)
+        messages.success(request, "Orden cancelada.")
+    except Exception as exc:
+        messages.error(request, f"No se pudo cancelar la orden: {exc}")
+    return redirect("order_detail", pk=pk)
 
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
@@ -1152,7 +1303,10 @@ def change_status(request, pk):
     if target == "DONE" and hasattr(order, "balance"):
         balance_value = order.balance
         if balance_value is not None and balance_value > Decimal("0.00"):
-            messages.error(request, "No puedes entregar con saldo pendiente.")
+            messages.error(
+                request,
+                f"No puedes entregar con saldo pendiente (${balance_value:.2f}).",
+            )
             return redirect("order_detail", pk=order.pk)
 
     if target == ServiceOrder.Status.READY_PICKUP:
@@ -1178,6 +1332,14 @@ def change_status(request, pk):
             "changed_by": getattr(request.user, "username", ""),
         },
     )
+
+    if target == ServiceOrder.Status.READY_PICKUP:
+        balance_value = getattr(order, "balance", None)
+        if balance_value is not None and balance_value > Decimal("0.00"):
+            messages.warning(
+                request,
+                f"Orden lista para recoger con saldo pendiente (${balance_value:.2f}). Cobra al entregar.",
+            )
 
     if target in (ServiceOrder.Status.READY_PICKUP, ServiceOrder.Status.DELIVERED):
         public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
@@ -1400,10 +1562,49 @@ def customer_devices(request, pk):
 @login_required(login_url="/admin/login/")
 @group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def reception_home(request):
+    counts = {code: 0 for code, _ in ServiceOrder.Status.choices}
+    for entry in (
+        ServiceOrder.objects.values("status")
+        .annotate(total=Count("id"))
+    ):
+        counts[entry["status"]] = entry["total"]
+
+    status_colors = {
+        ServiceOrder.Status.NEW: "#3B82F6",          # Recibido
+        ServiceOrder.Status.IN_REVIEW: "#FACC15",    # En revision
+        ServiceOrder.Status.WAITING_PARTS: "#FB923C",# En espera de repuestos
+        ServiceOrder.Status.REQUIRES_AUTH: "#EF4444",# Requiere autorizacion
+        ServiceOrder.Status.READY_PICKUP: "#22C55E", # Listo para recoger
+        ServiceOrder.Status.DELIVERED: "#9CA3AF",    # Entregado
+    }
+
+    status_cards = [
+        {
+            "code": code,
+            "label": label,
+            "count": counts.get(code, 0),
+            "color": status_colors.get(code, "#e2e8f0"),
+        }
+        for code, label in ServiceOrder.Status.choices
+    ]
+
+    recent_orders = list(
+        ServiceOrder.objects.select_related("customer")
+        .prefetch_related("devices")
+        .order_by("-checkin_at")[:10]
+    )
+    for o in recent_orders:
+        o.device_summary = build_device_label(o)
+        o.status_color = status_colors.get(o.status, "#e2e8f0")
+
     return render(
         request,
         "reception/home.html",
-        {"can_export": is_gerencia(request.user)},
+        {
+            "can_export": is_gerencia(request.user),
+            "status_cards": status_cards,
+            "recent_orders": recent_orders,
+        },
     )
 
 
@@ -1929,24 +2130,29 @@ def estimate_public(request, token):
     subtotal = (estimate.subtotal or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     tax = (estimate.tax or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     total = (estimate.total or Decimal("0.00")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    accepted_subtotal, accepted_tax, accepted_total = estimate.accepted_totals()
 
     items = []
     for item in estimate.items.order_by("id"):
         raw_unit_price = item.unit_price or Decimal("0.00")
         unit_price = raw_unit_price.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
         line_total = (raw_unit_price * item.qty).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        item_status = item.status or EstimateItem.Status.PENDING
         items.append(
             {
+                "id": item.id,
                 "description": item.description,
                 "qty": item.qty,
                 "unit_price": unit_price,
                 "line_total": line_total,
+                "status": item_status,
+                "decided_at": item.decided_at,
             }
         )
 
     approved_at_local = timezone.localtime(estimate.approved_at) if estimate.approved_at else None
     declined_at_local = timezone.localtime(estimate.declined_at) if estimate.declined_at else None
-    is_pending = not estimate.approved_at and not estimate.declined_at
+    is_pending = estimate.has_pending_items
 
     customer = estimate.order.get_customer()
     context = {
@@ -1958,14 +2164,71 @@ def estimate_public(request, token):
         "subtotal": subtotal,
         "tax": tax,
         "total": total,
+        "accepted_subtotal": accepted_subtotal,
+        "accepted_tax": accepted_tax,
+        "accepted_total": accepted_total,
+        "item_status_pending": EstimateItem.Status.PENDING,
+        "item_status_accepted": EstimateItem.Status.ACCEPTED,
+        "item_status_rejected": EstimateItem.Status.REJECTED,
         "status_label": _estimate_status_label(estimate),
         "note": estimate.note or "",
-        "is_pending": is_pending,
+        "has_pending_items": estimate.has_pending_items,
+        "is_closed": estimate.is_closed,
         "approved_at_local": approved_at_local,
         "declined_at_local": declined_at_local,
     }
     return render(request, "estimate_public.html", context)
 
+
+
+@require_POST
+def estimate_update_items(request, token):
+    estimate = get_object_or_404(
+        Estimate.objects.select_related("order").prefetch_related("items"),
+        token=token,
+    )
+    if estimate.is_closed:
+        messages.info(request, "Esta cotizacion ya esta cerrada.")
+        return redirect("estimate_public", token=token)
+
+    items = list(estimate.items.order_by("id"))
+    valid_statuses = {choice for choice, _ in EstimateItem.Status.choices}
+    now = timezone.now()
+    updates = []
+    for item in items:
+        if item.status != EstimateItem.Status.PENDING:
+            continue
+        field_name = f"item-{item.pk}-status"
+        submitted = (request.POST.get(field_name) or "").strip().upper()
+        if submitted not in valid_statuses:
+            continue
+        if submitted == item.status:
+            continue
+        updates.append((item, submitted))
+
+    if updates:
+        with transaction.atomic():
+            for item, new_status in updates:
+                item.status = new_status
+                item.decided_at = now
+                item.save(update_fields=["status", "decided_at"])
+                notify_estimate_item_decision(item)
+            estimate.recompute_status_from_items(save=True)
+
+    pending_ids = list(
+        estimate.items.filter(status=EstimateItem.Status.PENDING).values_list("id", flat=True)
+    )
+    if pending_ids:
+        messages.error(request, "Selecciona Acepto o No acepto en todas las partidas antes de guardar.")
+        return redirect("estimate_public", token=token)
+
+    # Close the estimate according to decisions (no pendings left)
+    with transaction.atomic():
+        estimate.recompute_status_from_items(save=True)
+        estimate.updated_at = timezone.now()
+        estimate.save(update_fields=["updated_at"])
+
+    return redirect("estimate_public", token=token)
 
 
 @require_POST
@@ -1977,15 +2240,16 @@ def estimate_approve(request, token):
         ),
         token=token,
     )
-    if estimate.approved_at or estimate.declined_at:
+    if not request.user.is_authenticated or not request.user.is_staff:
         return redirect("estimate_public", token=token)
-
     now = timezone.now()
     order = estimate.order
     with transaction.atomic():
+        estimate.items.update(status=EstimateItem.Status.ACCEPTED, decided_at=now)
         estimate.approved_at = now
         estimate.declined_at = None
-        estimate.save(update_fields=["approved_at", "declined_at"])
+        estimate.status = Estimate.Status.CLOSED_ACCEPTED
+        estimate.save(update_fields=["approved_at", "declined_at", "status"])
         actor_role = resolve_actor_role(None)
         target_status = ServiceOrder.Status.WAITING_PARTS
         fallback_status = ServiceOrder.Status.IN_REVIEW
@@ -2045,15 +2309,16 @@ def estimate_decline(request, token):
         ),
         token=token,
     )
-    if estimate.approved_at or estimate.declined_at:
+    if not request.user.is_authenticated or not request.user.is_staff:
         return redirect("estimate_public", token=token)
-
     now = timezone.now()
     order = estimate.order
     with transaction.atomic():
+        estimate.items.update(status=EstimateItem.Status.REJECTED, decided_at=now)
         estimate.declined_at = now
         estimate.approved_at = None
-        estimate.save(update_fields=["approved_at", "declined_at"])
+        estimate.status = Estimate.Status.CLOSED_REJECTED
+        estimate.save(update_fields=["approved_at", "declined_at", "status"])
         actor_role = resolve_actor_role(None)
         if order.can_transition_to(ServiceOrder.Status.IN_REVIEW):
             order.transition_to(ServiceOrder.Status.IN_REVIEW, author=None, author_role=actor_role)

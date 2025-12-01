@@ -212,3 +212,19 @@ class ReceptionCustomerDeviceTests(TestCase):
         self.assertContains(response, "PIN 0000")
         self.assertContains(response, "Dock y cargador")
         self.assertContains(response, "Teclado externo")
+
+    def test_customer_edit_view_updates_data(self):
+        customer = Customer.objects.create(name="Original", phone="5551112233", alt_phone="", email="orig@example.com")
+        url = reverse("customer_edit", args=[customer.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            url,
+            {"name": "Editado", "phone": "5559990000", "alt_phone": "", "email": "edit@example.com"},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        customer.refresh_from_db()
+        self.assertEqual(customer.name, "Editado")
+        self.assertEqual(customer.phone, "555 999 0000")
+        self.assertEqual(customer.email, "edit@example.com")

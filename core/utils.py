@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
@@ -7,6 +8,8 @@ from django.utils import timezone
 
 from core.models import InventoryMovement, ServiceOrder, StatusHistory
 from core.permissions import is_gerencia, is_recepcion, is_tecnico
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_actor_role(user: Optional[AnonymousUser]) -> str:
@@ -213,6 +216,25 @@ def apply_estimate_inventory(order, *, author=None):
     estimate.inventory_applied = True
     estimate.save(update_fields=["inventory_applied"])
     return True, None
+
+
+def notify_estimate_item_decision(item):
+    """Temporary hook to trace when a public estimate item is decided."""
+    try:
+        logger.info(
+            "Estimate item decided",
+            extra={
+                "estimate_id": getattr(item.estimate, "id", None),
+                "item_id": getattr(item, "id", None),
+                "status": getattr(item, "status", ""),
+            },
+        )
+    except Exception:
+        # As a fallback, avoid breaking the request.
+        print(
+            f"Estimate item decided: estimate={getattr(item.estimate, 'id', None)} "
+            f"item={getattr(item, 'id', None)} status={getattr(item, 'status', '')}"
+        )
 
 
 def _compose_status_email(

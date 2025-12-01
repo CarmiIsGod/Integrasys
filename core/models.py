@@ -1,6 +1,6 @@
 from django.db import models
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.apps import apps
@@ -19,6 +19,9 @@ from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save
 
 from django.dispatch import receiver
+
+
+IVA_RATE = Decimal("0.16")
 
 class Customer(models.Model):
     name = models.CharField(max_length=120, db_index=True)
@@ -78,14 +81,16 @@ class ServiceOrder(models.Model):
         REQUIRES_AUTH = "AUTH", "Requiere autorizacion de repuestos"
         READY_PICKUP = "READY", "Listo para recoger"
         DELIVERED = "DONE", "Entregado"
+        CANCELLED = "CANC", "Cancelado"
 
     STATUS_TRANSITIONS = {
-        Status.NEW: (Status.IN_REVIEW,),
-        Status.IN_REVIEW: (Status.WAITING_PARTS, Status.REQUIRES_AUTH, Status.READY_PICKUP),
-        Status.WAITING_PARTS: (Status.IN_REVIEW, Status.READY_PICKUP),
-        Status.REQUIRES_AUTH: (Status.IN_REVIEW, Status.READY_PICKUP),
-        Status.READY_PICKUP: (Status.DELIVERED,),
-        Status.DELIVERED: (),
+        Status.NEW: (Status.IN_REVIEW, Status.CANCELLED),
+        Status.IN_REVIEW: (Status.WAITING_PARTS, Status.REQUIRES_AUTH, Status.READY_PICKUP, Status.CANCELLED),
+        Status.WAITING_PARTS: (Status.IN_REVIEW, Status.READY_PICKUP, Status.CANCELLED),
+        Status.REQUIRES_AUTH: (Status.IN_REVIEW, Status.READY_PICKUP, Status.CANCELLED),
+        Status.READY_PICKUP: (Status.DELIVERED, Status.CANCELLED),
+        Status.DELIVERED: (Status.CANCELLED,),
+        Status.CANCELLED: (),
     }
 
     customer = models.ForeignKey(
@@ -98,6 +103,13 @@ class ServiceOrder(models.Model):
     )
     device = models.ForeignKey(Device, on_delete=models.CASCADE, db_index=True)
     devices = models.ManyToManyField(Device, related_name="orders", blank=True)
+    warranty_parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="warranty_children",
+    )
     folio = models.CharField(max_length=20, unique=True, blank=True, editable=False)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW, db_index=True)
@@ -234,21 +246,23 @@ class ServiceOrder(models.Model):
     @property
     def approved_total(self):
         Estimate = apps.get_model(self._meta.app_label, "Estimate")
-        EstimateItem = apps.get_model(self._meta.app_label, "EstimateItem")
-        if not Estimate or not EstimateItem:
+        if not Estimate:
             return Decimal("0.00")
         try:
             estimate = self.estimate
         except Estimate.DoesNotExist:
             return Decimal("0.00")
-        aggregation = estimate.items.aggregate(
-            total=models.Sum(
-                models.F("qty") * models.F("unit_price"),
-                output_field=models.DecimalField(max_digits=12, decimal_places=2),
+        try:
+            _, _, accepted_total = estimate.accepted_totals()
+        except Exception:
+            aggregation = estimate.items.aggregate(
+                total=models.Sum(
+                    models.F("qty") * models.F("unit_price"),
+                    output_field=models.DecimalField(max_digits=12, decimal_places=2),
+                )
             )
-        )
-        total = aggregation.get("total")
-        return self._quantize_amount(total)
+            accepted_total = aggregation.get("total")
+        return self._quantize_amount(accepted_total)
 
     @property
     def approved_estimate_total(self):
@@ -267,6 +281,10 @@ class ServiceOrder(models.Model):
         approved = self.approved_total
         paid = self.paid_total
         return self._quantize_amount(approved - paid)
+
+    @property
+    def is_warranty(self):
+        return bool(self.warranty_parent_id)
 
 
 class StatusHistory(models.Model):
@@ -327,6 +345,12 @@ class InventoryMovement(models.Model):
         ]
 
 class Estimate(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pendiente"
+        CLOSED_ACCEPTED = "CLOSED_ACCEPTED", "Cerrada · aprobada"
+        CLOSED_PARTIAL = "CLOSED_PARTIAL", "Cerrada · aceptacion parcial"
+        CLOSED_REJECTED = "CLOSED_REJECTED", "Cerrada · rechazada"
+
     order = models.OneToOneField(ServiceOrder, on_delete=models.CASCADE, related_name="estimate")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -339,16 +363,97 @@ class Estimate(models.Model):
     apply_tax = models.BooleanField(default=True)
     inventory_applied = models.BooleanField(default=False)
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
 
     def __str__(self):
         return f"Estimate {self.order.folio}"
 
+    def accepted_totals(self):
+        """Return (subtotal, tax, total) using only accepted items."""
+        status_code = getattr(EstimateItem.Status, "ACCEPTED", "ACC")
+        aggregation = self.items.filter(status=status_code).aggregate(
+            subtotal=models.Sum(
+                models.F("qty") * models.F("unit_price"),
+                output_field=models.DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+        raw_subtotal = aggregation.get("subtotal") or Decimal("0.00")
+        subtotal = raw_subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        tax = Decimal("0.00")
+        if getattr(self, "apply_tax", True):
+            tax = (subtotal * IVA_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total = (subtotal + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return subtotal, tax, total
+
+    @property
+    def has_pending_items(self):
+        return self.items.filter(status=EstimateItem.Status.PENDING).exists()
+
+    def recompute_status_from_items(self, *, save=True):
+        """Recalculate status based on item decisions."""
+        counts = {
+            EstimateItem.Status.PENDING: 0,
+            EstimateItem.Status.ACCEPTED: 0,
+            EstimateItem.Status.REJECTED: 0,
+        }
+        for row in self.items.values("status").annotate(total=Count("id")):
+            if row["status"] in counts:
+                counts[row["status"]] = row["total"]
+        pending = counts[EstimateItem.Status.PENDING]
+        accepted = counts[EstimateItem.Status.ACCEPTED]
+        rejected = counts[EstimateItem.Status.REJECTED]
+        total = pending + accepted + rejected
+
+        if pending > 0:
+            new_status = self.Status.PENDING
+        elif accepted == total:
+            new_status = self.Status.CLOSED_ACCEPTED
+        elif rejected == total:
+            new_status = self.Status.CLOSED_REJECTED
+        elif accepted > 0 and rejected > 0:
+            new_status = self.Status.CLOSED_PARTIAL
+        else:
+            new_status = self.Status.PENDING
+
+        updated_fields = []
+        if self.status != new_status:
+            self.status = new_status
+            updated_fields.append("status")
+        if save and updated_fields:
+            self.save(update_fields=updated_fields)
+        return new_status
+
+    @property
+    def is_closed(self):
+        return self.status in {
+            self.Status.CLOSED_ACCEPTED,
+            self.Status.CLOSED_PARTIAL,
+            self.Status.CLOSED_REJECTED,
+        }
+
 
 class EstimateItem(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PEN", "Pendiente"
+        ACCEPTED = "ACC", "Aceptada"
+        REJECTED = "REJ", "Rechazada"
+
     estimate = models.ForeignKey(Estimate, on_delete=models.CASCADE, related_name="items")
     description = models.CharField(max_length=140)
     qty = models.PositiveIntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(
+        max_length=3,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
     inventory_item = models.ForeignKey(InventoryItem, null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):

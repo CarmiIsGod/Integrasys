@@ -9,16 +9,30 @@
   <title>Inventario | Integrasys</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;}
-    h1{margin:0 0 12px;font-size:28px;}
-    h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+    h1{margin:0 0 12px;font-size:28px;display:flex;align-items:center;gap:10px;}
+    h1 .icon{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:#e0f2fe;color:#0ea5e9;}
+    h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;display:flex;align-items:center;gap:10px;}
+    h2 .icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#eef2ff;color:#1d4ed8;}
     .muted{color:#64748b;font-size:14px;}
-    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:999px;text-decoration:none;font-weight:700;border:1px solid transparent;}
+    .btn-entry{background:#16a34a;border-color:#16a34a;}
+    .btn-entry:hover{background:#15803d;}
+    .btn-out{background:#dc2626;border-color:#dc2626;}
+    .btn-out:hover{background:#b91c1c;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;margin-bottom:18px;}
     form{display:grid;gap:12px;}
     form label{font-weight:600;color:#1e293b;font-size:14px;}
     form input{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
     form button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;justify-self:flex-start;}
+    .inventory-filters-card{background:#fff;border-radius:14px;padding:16px 16px 12px;box-shadow:0 1px 2px rgba(15,23,42,0.06);border:1px solid #e5e7eb;max-width:100%;box-sizing:border-box;}
+    .inventory-filters-card *{box-sizing:border-box;}
+    .inventory-search-row{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+    .inventory-search-row input[type="text"]{width:100%;}
+    .inventory-actions-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:4px;}
+    .inventory-actions-row .btn{flex:0 0 auto;white-space:nowrap;min-width:120px;}
+    .inventory-stock-low-toggle{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid #f97316;background:#fff7ed;font-size:13px;color:#b45309;white-space:nowrap;flex-shrink:0;}
+    .inventory-stock-low-toggle input{margin:0;}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
     th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
     th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
@@ -34,6 +48,12 @@
       form button,.btn,.btn-ghost{width:100%;text-align:center;}
       section.card form{grid-template-columns:1fr;}
     }
+    @media (max-width:768px){
+      .inventory-filters-card{padding:12px 12px 10px;}
+      .inventory-actions-row{flex-direction:column;align-items:stretch;justify-content:flex-start;}
+      .inventory-actions-row .btn{width:100%;}
+      .inventory-stock-low-toggle{width:100%;justify-content:center;}
+    }
     @media (max-width:600px){
       body{padding:12px;}
       h1{font-size:24px;}
@@ -46,12 +66,12 @@
   <main>
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
       <div>
-        <h1>Inventario</h1>
+        <h1><span class="icon">📦</span>Inventario</h1>
         <p class="muted">Consulta existencias, registra entradas y administra refacciones.</p>
       </div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
         <a class="btn btn-ghost" href="{% url 'reception_home' %}">&larr; Inicio</a>
-        <a class="btn btn-ghost" href="{% url 'inventory_create' %}">Nuevo item</a>
+        <a class="btn btn-entry" href="{% url 'inventory_create' %}">Entrada</a>
         <a class="btn btn-ghost" href="{% url 'export_inventory_csv' %}">Exportar CSV</a>
       </div>
     </div>
@@ -62,32 +82,36 @@
       </ul>
     {% endif %}
 
-    <section class="card">
+    <section class="inventory-filters-card">
       <form method="get">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
-          <label>Buscar SKU / Nombre / Ubicación
-            <input name="q" placeholder="Buscar" value="{{ q }}">
-          </label>
-          <label style="display:flex;align-items:flex-end;gap:12px;">
-            <input type="checkbox" name="low" value="1" {% if low %}checked{% endif %}>
+        <div class="inventory-search-row">
+          <label for="filter-search">Buscar SKU / Nombre / Ubicación</label>
+          <input id="filter-search" name="q" type="text" placeholder="Buscar" value="{{ q }}">
+        </div>
+        <div class="inventory-actions-row">
+          <button type="submit">Filtrar</button>
+          <a href="{% url 'inventory_list' %}" class="btn btn-ghost" style="text-align:center;">Limpiar</a>
+          <label class="inventory-stock-low-toggle" for="low-stock">
+            <span style="color:#f97316;">&#9888;</span>
+            <input type="checkbox" id="low-stock" name="low" value="1" {% if low %}checked{% endif %}>
             <span>Solo con stock bajo</span>
           </label>
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">
-          <button type="submit">Filtrar</button>
-          <a href="{% url 'inventory_list' %}" class="btn btn-ghost">Limpiar</a>
         </div>
       </form>
     </section>
 
     <section class="card">
-      <h2>Registrar entrada rápida</h2>
-      <form method="post" action="{% url 'receive_stock' %}" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">
+      <h2><span class="icon">📥</span>Registrar entrada rápida</h2>
+      <form method="post" action="{% url 'receive_stock' %}" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center;">
         {% csrf_token %}
         <input name="sku" placeholder="SKU" required style="flex:1 0 150px;">
         <input name="qty" type="number" min="1" value="1" required style="width:100px;">
         <input name="reason" placeholder="Motivo (opcional)" style="flex:1 0 220px;">
-        <button type="submit" class="btn btn-ghost">Entrada</button>
+        <input type="hidden" name="movement_type" value="ENTRY" id="movement-type-field">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="submit" class="btn btn-entry" onclick="document.getElementById('movement-type-field').value='ENTRY';">Entrada</button>
+          <button type="submit" class="btn btn-out" onclick="document.getElementById('movement-type-field').value='OUT';">Salida</button>
+        </div>
       </form>
     </section>
 
@@ -109,7 +133,7 @@
             <tr>
               <td>{{ it.sku }}</td>
               <td>{{ it.name }}</td>
-              <td>{{ it.location|default:"—" }}</td>
+              <td>{{ it.location|default:"-" }}</td>
               <td>
                 {{ it.qty }}
                 {% if it.qty < it.min_qty %}
@@ -118,9 +142,9 @@
               </td>
               <td>{{ it.min_qty }}</td>
               <td>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                  <a href="{% url 'inventory_update' it.pk %}">Editar</a>
-                  <a href="{% url 'inventory_delete' it.pk %}">Eliminar</a>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                  <a href="{% url 'inventory_update' it.pk %}" title="Editar" aria-label="Editar" style="color:#2563eb;text-decoration:none;">✏️</a>
+                  <a href="{% url 'inventory_delete' it.pk %}" title="Eliminar" aria-label="Eliminar" style="color:#dc2626;text-decoration:none;">🗑️</a>
                 </div>
               </td>
             </tr>

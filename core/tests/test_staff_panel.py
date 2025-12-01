@@ -220,9 +220,17 @@ class StaffPanelTests(TestCase):
         resp = self.client.post(reverse("change_status", args=[order.pk]), {"target": ServiceOrder.Status.READY_PICKUP})
         self.assertEqual(resp.status_code, 302)
 
+        # Aceptar todas las partidas para permitir cobro
+        for est_item in estimate.items.all():
+            est_item.status = EstimateItem.Status.ACCEPTED
+            est_item.save(update_fields=["status"])
+        estimate.recompute_status_from_items(save=True)
+        order.refresh_from_db()
+        current_balance = order.balance
+
         resp = self.client.post(
             reverse("add_payment", args=[order.pk]),
-            {"amount": "500.00", "method": "Efectivo", "reference": "ABC123"},
+            {"amount": f"{current_balance}", "method": "Efectivo", "reference": "ABC123"},
         )
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
@@ -239,6 +247,24 @@ class StaffPanelTests(TestCase):
         self.assertEqual(pdf_resp.status_code, 200)
         self.assertEqual(pdf_resp["Content-Type"], "application/pdf")
 
+    def test_open_warranty_creates_new_order(self):
+        order = self._create_order()
+        order.status = ServiceOrder.Status.DELIVERED
+        order.save(update_fields=["status"])
+        order.devices.set([order.device])
+        resp = self.client.post(reverse("order_open_warranty", args=[order.pk]))
+        self.assertEqual(resp.status_code, 302)
+        new_order = ServiceOrder.objects.exclude(pk=order.pk).latest("id")
+        self.assertEqual(new_order.warranty_parent, order)
+        self.assertEqual(new_order.customer, order.customer)
+        self.assertTrue(new_order.devices.exists())
+
+    def test_cancel_order_changes_status(self):
+        order = self._create_order()
+        resp = self.client.post(reverse("order_cancel", args=[order.pk]))
+        self.assertEqual(resp.status_code, 302)
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.CANCELLED)
 
 
 

@@ -8,51 +8,55 @@
   <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
   <title>{{ title }}</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:20px}
-    form{max-width:420px}
-    label{display:block;margin-bottom:4px;font-weight:600}
-    input{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px}
-    .field{margin-bottom:12px}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#f5f7fb;margin:20px;display:flex;justify-content:center;}
+    .card{width:100%;max-width:520px;background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(15,23,42,0.08);padding:20px 18px;border:1px solid #e2e8f0;}
+    h1{margin:0 0 14px;color:#0f172a;}
+    form{width:100%;}
+    label{display:block;margin-bottom:6px;font-weight:700;color:#1e293b;}
+    input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;box-sizing:border-box;}
+    .field{margin-bottom:14px}
     .muted{color:#6b7280;font-size:13px;margin-top:4px}
     .error{color:#b91c1c;font-size:13px;margin-top:4px}
     .nonfield{color:#b91c1c;margin-bottom:12px}
-    button,.btn{display:inline-block;padding:8px 12px;border-radius:6px;border:0;background:#2563eb;color:#fff;text-decoration:none;cursor:pointer}
-    .btn.secondary{background:#6b7280}
-    .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+    button,.btn{display:inline-block;padding:10px 16px;border-radius:12px;border:0;background:#2563eb;color:#fff;text-decoration:none;cursor:pointer;font-weight:700;}
+    .btn.secondary{background:#e2e8f0;color:#1e293b;}
+    .actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;margin-top:14px}
     @media(max-width:600px){
       body{margin:12px;}
-      form{max-width:100%;}
+      .card{max-width:100%;}
       button,.btn{width:100%;text-align:center;}
     }
   </style>
 </head>
 <body>
-  <h1>{{ title }}</h1>
+  <div class="card">
+    <h1>{{ title }}</h1>
 
-  {% if messages %}
-    {% for m in messages %}<div>{{ m }}</div>{% endfor %}
-  {% endif %}
-
-  <form method="post" novalidate>
-    {% csrf_token %}
-    {% if form.non_field_errors %}
-      <div class="nonfield">
-        {% for err in form.non_field_errors %}<div>{{ err }}</div>{% endfor %}
-      </div>
+    {% if messages %}
+      {% for m in messages %}<div>{{ m }}</div>{% endfor %}
     {% endif %}
-    {% for field in form %}
-      <div class="field">
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-        {% if field.help_text %}<div class="muted">{{ field.help_text }}</div>{% endif %}
-        {% for err in field.errors %}<div class="error">{{ err }}</div>{% endfor %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="nonfield">
+          {% for err in form.non_field_errors %}<div>{{ err }}</div>{% endfor %}
+        </div>
+      {% endif %}
+      {% for field in form %}
+        <div class="field">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="muted">{{ field.help_text }}</div>{% endif %}
+          {% for err in field.errors %}<div class="error">{{ err }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+      <div class="actions">
+        <button type="submit">Guardar</button>
+        <a class="btn secondary" href="{% url 'inventory_list' %}">Cancelar</a>
       </div>
-    {% endfor %}
-    <div class="actions">
-      <button type="submit">Guardar</button>
-      <a class="btn secondary" href="{% url 'inventory_list' %}">Cancelar</a>
-    </div>
-  </form>
+    </form>
+  </div>
 </body>
 </html>
 

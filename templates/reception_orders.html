@@ -31,6 +31,16 @@
     .pager{display:flex;justify-content:space-between;align-items:center;margin-top:18px;color:#64748b;}
     .table-wrapper{background:#fff;border-radius:12px;box-shadow:0 6px 16px rgba(15,23,42,0.06);overflow-x:auto;}
     main{max-width:1200px;margin:0 auto;}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:13px;font-weight:600;color:#0f172a;border:1px solid #e2e8f0;}
+    .status-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.8);}
+    .badge-status-NEW{background:#3B82F6;color:#fff;border-color:#3B82F6;}
+    .badge-status-REV{background:#FACC15;color:#92400e;border-color:#FACC15;}
+    .badge-status-WAI{background:#FB923C;color:#7c2d12;border-color:#FB923C;}
+    .badge-status-AUTH{background:#EF4444;color:#fff;border-color:#EF4444;}
+    .badge-status-READY{background:#22C55E;color:#0f172a;border-color:#22C55E;}
+    .badge-status-DONE{background:#9CA3AF;color:#111827;border-color:#9CA3AF;}
+    .actions-row a{color:#2563eb;text-decoration:none;font-weight:600;}
+    .actions-row a:hover{text-decoration:underline;}
     @media (max-width:1100px){
       form button,.btn,.btn-ghost{width:100%;justify-content:center;display:inline-flex;}
     }
@@ -130,47 +140,19 @@
                 <span class="muted">Sin dispositivos</span>
               {% endif %}
             </td>
-            <td>{{ o.get_status_display }}</td>
+            <td>
+              <span class="status-badge badge-status-{{ o.status }}">
+                <span class="status-dot"></span>
+                {{ o.get_status_display }}
+              </span>
+            </td>
             <td>{{ o.checkin_at|date:"Y-m-d H:i" }}</td>
             <td>
               <div class="actions-row">
-                <a href="{% url 'public_status' token=o.token %}" target="_blank">Estado público</a>
-                <a href="{% url 'order_detail' o.pk %}">Detalle</a>
+                <a href="{% url 'public_status' token=o.token %}" target="_blank">Enlace público</a>
+                <a href="{% url 'order_detail' o.pk %}">Detalles</a>
                 <a href="{% url 'order_attachments' o.pk %}">Adjuntos{% if o.attachments.count %} ({{ o.attachments.count }}){% endif %}</a>
               </div>
-              <div class="actions-row">
-                <form method="post" action="{% url 'add_part' o.pk %}" style="display:flex;flex-wrap:wrap;gap:6px;">
-                  {% csrf_token %}
-                  <input name="sku" placeholder="SKU" style="width:110px" required>
-                  <input name="qty" type="number" min="1" value="1" style="width:70px" required>
-                  <input name="reason" placeholder="Motivo" style="width:140px">
-                  <button type="submit" style="background:#0ea5e9;">Usar</button>
-                </form>
-              </div>
-              {% if o.allowed_next %}
-                <div class="actions-row">
-                  {% for code in o.allowed_next %}
-                    {% for c,label in status_choices %}
-                      {% if c == code %}
-                        {% if c != 'DONE' or is_superuser %}
-                          {% if c == 'AUTH' %}
-                            <form method="post" action="{% url 'change_status_auth' o.pk %}">
-                              {% csrf_token %}
-                              <button type="submit" class="btn btn-ghost">{{ label }}</button>
-                            </form>
-                          {% else %}
-                            <form method="post" action="{% url 'change_status' o.pk %}">
-                              {% csrf_token %}
-                              <input type="hidden" name="target" value="{{ code }}">
-                              <button type="submit" class="btn btn-ghost">{{ label }}</button>
-                            </form>
-                          {% endif %}
-                        {% endif %}
-                      {% endif %}
-                    {% endfor %}
-                  {% endfor %}
-                </div>
-              {% endif %}
             </td>
           </tr>
         {% empty %}

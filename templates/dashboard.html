@@ -30,9 +30,11 @@
         .card.emphasis { background: #1d4ed8; border-color: #1d4ed8; color: #ffffff; }
         .card.emphasis .label { color: rgba(255, 255, 255, 0.8); }
         .card.emphasis .value { color: #ffffff; }
-        .status-grid a.card { text-decoration: none; color: inherit; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
+        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+        .status-grid a.card { position:relative; text-decoration: none; color: inherit; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; overflow:hidden; }
+        .status-grid a.card::before{content:"";position:absolute;inset:-2px -2px auto -2px;height:8px;border-radius:10px 10px 0 0;background:var(--status-color,#dfe3eb);}
         .status-grid a.card:hover { transform: translateY(-2px); border-color: #2563eb; box-shadow: 0 6px 12px rgba(37, 99, 235, 0.18); }
-        .status-grid .code { font-size: 11px; font-weight: 600; color: #2563eb; letter-spacing: .06em; }
+        .status-grid .code { font-size: 11px; font-weight: 600; color: #0f172a; letter-spacing: .06em; }
         .chart-card, .table-card { background: #ffffff; border: 1px solid #dfe3eb; border-radius: 10px; padding: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
         .chart-card h2, .table-card h2 { margin: 0 0 12px; font-size: 18px; color: #111827; }
         .mini-chart { width: 100%; height: 180px; }
@@ -132,10 +134,10 @@
 
         <section class="kpi-grid status-grid">
             {% for item in status_cards %}
-                <a class="card status-card" href="/recepcion/ordenes/?status={{ item.code }}{{ status_preserve_query }}">
+                <a class="card status-card" style="--status-color: {{ item.color }};" href="/recepcion/ordenes/?status={{ item.code }}{{ status_preserve_query }}">
                     <span class="code">{{ item.code }}</span>
                     <span class="label">{{ item.label }}</span>
-                    <span class="value">{{ item.count }}</span>
+                    <span class="value" style="font-weight:700;font-size:22px;">{{ item.count }}</span>
                 </a>
             {% endfor %}
         </section>

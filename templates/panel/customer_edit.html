@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  {% load static %}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editar cliente | Integrasys</title>
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:20px;color:#0f172a;}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(15,23,42,0.08);max-width:520px;margin:0 auto;}
+    label{display:block;margin-top:12px;font-weight:600;}
+    input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px;font-family:inherit;}
+    .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:10px;border:1px solid #d1d5db;background:#e2e8f0;color:#111827;text-decoration:none;font-weight:600;cursor:pointer;}
+    .btn-primary{background:#1d4ed8;border-color:#1d4ed8;color:#fff;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 style="margin:0 0 8px;">Editar cliente</h1>
+    <p style="margin:0 0 12px;color:#475569;">Actualiza los datos de contacto.</p>
+    <form method="post">
+      {% csrf_token %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <label for="id_name">Nombre</label>
+      {{ form.name }}
+      <label for="id_phone">Teléfono</label>
+      {{ form.phone }}
+      <label for="id_alt_phone">Teléfono alterno</label>
+      {{ form.alt_phone }}
+      <label for="id_email">Email</label>
+      {{ form.email }}
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        {% if next %}
+          <a class="btn" href="{{ next }}">Volver</a>
+        {% else %}
+          <a class="btn" href="{% url 'customer_list' %}">Volver</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</body>
+</html>

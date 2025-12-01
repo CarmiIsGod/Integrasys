@@ -10,17 +10,25 @@
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.5;background:#f9fafb;}
     .card{border:1px solid #e2e8f0;border-radius:16px;padding:24px 28px;max-width:820px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,0.08);page-break-inside:avoid;}
-    .muted{color:#666}
+    .muted{color:#4B5563}
     table{border-collapse:collapse;width:100%}
     th,td{border-bottom:1px solid #eee;padding:8px;text-align:left}
     .identity{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:18px;}
     .identity__brand{display:flex;flex-direction:column;gap:8px;}
     .identity__brand img{height:70px;width:auto;display:block;}
     .identity .qr{height:128px;width:128px;flex-shrink:0;border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;}
-    .status{display:inline-block;padding:4px 10px;border-radius:999px;background:#f2f2f2}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-weight:700;font-size:13px;color:#0f172a;border:1px solid #e5e7eb;}
+    .status-NEW{background:#3B82F6;color:#fff;border-color:#3B82F6;}
+    .status-REV{background:#FACC15;color:#92400e;border-color:#FACC15;}
+    .status-WAI{background:#FB923C;color:#7c2d12;border-color:#FB923C;}
+    .status-AUTH{background:#EF4444;color:#fff;border-color:#EF4444;}
+    .status-READY{background:#22C55E;color:#0f172a;border-color:#22C55E;}
+    .status-DONE{background:#9CA3AF;color:#111827;border-color:#9CA3AF;}
     .device-notes{font-size:13px;color:#475569;margin-top:2px;}
     .device-detail-label{font-weight:400;color:#1f2937;}
     .public-disclaimer{margin-top:20px;background:#f8fafc;border-radius:12px;padding:12px 16px;color:#475569;font-size:13px;line-height:1.4;text-align:center;}
+    .btn-print{display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:999px;border:1px solid #cbd5e0;background:#eef2ff;color:#1d4ed8;font-weight:700;cursor:pointer;text-decoration:none;}
+    .btn-print:hover{background:#e0e7ff;}
     @media print {
       @page { size: A4; margin: 10mm; }
       body{margin:0;background:#fff;}
@@ -32,6 +40,7 @@
       ul{margin-top:6px;margin-bottom:10px;}
       .public-disclaimer{font-size:12px;margin-top:12px;padding:10px 12px;}
       .no-print{display:none}
+      .btn-print{display:none !important;}
     }
   </style>
 </head>
@@ -39,7 +48,7 @@
   <div class="card">
     <div class="identity">
       <div class="identity__brand">
-        <img src="{% static 'img/brand/logo-company-color.png' %}" alt="Integrasys">
+        <img src="{% static 'img/brand/imago-azul.png?v=2' %}" alt="Integrasys">
       </div>
       <img class="qr" src="./qr.png" width="120" height="120" alt="QR">
     </div>
@@ -52,9 +61,9 @@
           <ul style="margin:4px 0 0 18px;padding:0;">
             {% for device in devices %}
               <li style="margin-bottom:6px;">
-                <div>{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</div>
+                <div><strong>Equipo:</strong> {{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</div>
                 <div class="device-notes">
-                  Descripci&oacute;n / falla:
+                  <strong>Falla:</strong>
                   {% if device.notes %}
                     {{ device.notes }}
                   {% else %}
@@ -66,11 +75,9 @@
                     <span class="device-detail-label">Contrase&ntilde;a / PIN:</span> {{ device.password_notes }}
                   </div>
                 {% endif %}
-                {% if device.accessories_notes %}
-                  <div class="device-notes">
-                    <span class="device-detail-label">Accesorios:</span> {{ device.accessories_notes }}
-                  </div>
-                {% endif %}
+                <div class="device-notes">
+                  <span class="device-detail-label">Accesorios:</span> {% if device.accessories_notes %}{{ device.accessories_notes }}{% else %}Sin accesorios declarados.{% endif %}
+                </div>
               </li>
             {% endfor %}
           </ul>
@@ -79,19 +86,21 @@
         {% endif %}
       {% endwith %}
     </div>
-    <p>Estado actual: <span class="status">{{ order.get_status_display }}</span></p>
+    <p>Estado actual:
+      <span class="status-badge status-{{ order.status }}">{{ order.get_status_display }}</span>
+    </p>
     <h3>Historial</h3>
     <table>
       <thead><tr><th>Fecha</th><th>Estado</th></tr></thead>
       <tbody>
         {% for s in history %}
           <tr>
-            <td>{{ s.created_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ s.created_at|date:"d-m-Y H:i" }}</td>
             <td>
               {% if s.from_status %}
                 <small class="muted">De {{ s.get_from_status_display }} &rarr;</small><br>
               {% endif %}
-              {{ s.get_status_display }}
+              <span class="status-badge status-{{ s.status }}">{{ s.get_status_display }}</span>
             </td>
           </tr>
         {% empty %}
@@ -109,7 +118,7 @@ Se informa a nuestros clientes que, una vez notificados del diagn&oacute;stico o
         <a href="{% url 'receipt_pdf' token=order.token %}" target="_blank">Descargar recibo (PDF)</a>
       </p>
     </div>
-  <p class="no-print"><button onclick="window.print()">Imprimir</button></p>
+  <p class="no-print"><button class="btn-print" onclick="window.print()">Imprimir</button></p>
 </body>
 </html>
 

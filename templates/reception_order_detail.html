@@ -13,11 +13,38 @@
     h1{margin:0 0 12px;font-size:28px;}
     h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
     .muted{color:#64748b;font-size:14px;}
-    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;}
+    .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;text-align:center;min-width:160px;}
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
     .btn-whatsapp{background:#16a34a!important;color:#fff!important;}
+    .btn-danger{background:#ef4444;color:#fff;border:1px solid #dc2626;}
+    .btn-full{width:100%;display:block;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;min-width:0;}
+    .order-card{background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 8px 18px rgba(15,23,42,0.06);border:1px solid #e2e8f0;}
+    .order-header-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px;width:100%;}
+    @media (max-width:1200px){.order-header-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+    @media (max-width:768px){.order-header-grid{grid-template-columns:1fr;}}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:18px;width:100%;}
+    .card-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+    .card-actions .btn,
+    .card-actions button,
+    .card-actions a{flex:1 1 150px;display:inline-flex;justify-content:center;align-items:center;text-align:center;white-space:nowrap;}
+    @media (max-width:768px){
+      .card-actions .btn,
+      .card-actions button,
+      .card-actions a{flex:1 1 100%;}
+    }
+    .quote-actions{margin-top:16px;display:flex;flex-direction:column;gap:10px;}
+    .quote-actions .btn-block{width:100%;display:inline-flex;justify-content:center;align-items:center;}
+    .quote-send-row{display:flex;gap:10px;}
+    .quote-send-row form{flex:1 1 0;margin:0;}
+    .quote-send-row .btn{flex:1 1 0;justify-content:center;width:100%;min-width:0;margin:0;}
+    .quote-send-row .btn-send{flex:1 1 0;min-width:0;margin:0;width:100%;}
+    .quote-send-row .btn-whatsapp,
+    .quote-send-row .btn-ghost,
+    .quote-send-row .btn-outline-dark{margin:0;}
+    @media (max-width:640px){
+      .quote-send-row{flex-direction:column;}
+    }
     ul.messages{list-style:none;padding:0;margin:12px 0;}
     ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
@@ -32,6 +59,10 @@
     main{max-width:1200px;margin:0 auto;}
     .table-wrapper{overflow-x:auto;border-radius:12px;background:#fff;box-shadow:0 6px 16px rgba(15,23,42,0.06);margin-top:12px;}
     .table-wrapper table{box-shadow:none;border-radius:0;}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,0.04);font-size:13px;font-weight:600;color:#0f172a;border:1px solid #e2e8f0;}
+    .finance-row{display:flex;flex-direction:column;gap:4px;}
+    .finance-row span{display:block;}
+    .status-dot{width:10px;height:10px;border-radius:50%;background:var(--status-color,#94a3b8);}
     @media (max-width:1100px){
       .btn,.btn-ghost,form.inline button{width:100%;text-align:center;}
     }
@@ -65,22 +96,50 @@
       </ul>
     {% endif %}
 
-    <div class="grid">
-      <div class="card">
+    <div class="order-header-grid">
+      <div class="card order-card">
         <h2>Resumen</h2>
-        <p><strong>Estatus:</strong> {{ order.get_status_display }}</p>
+        <p><strong>Estatus:</strong> <span class="status-badge" style="--status-color: {{ order.status_color|default:'#94a3b8' }};"><span class="status-dot"></span>{{ order.get_status_display }}</span></p>
         <p><strong>Ingreso:</strong> {{ order.checkin_at|date:"Y-m-d H:i" }}</p>
         {% if order.checkout_at %}<p><strong>Salida:</strong> {{ order.checkout_at|date:"Y-m-d H:i" }}</p>{% endif %}
-        <p><strong>Finanzas:</strong> Aprobado ${{ approved_total|floatformat:2 }} · Pagado ${{ paid_total|floatformat:2 }} · Saldo ${{ balance|floatformat:2 }}</p>
-        <p class="muted">Asignado a: {{ order.assigned_to|default:"—" }}</p>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;">
-          <a class="btn" href="{{ public_url }}" target="_blank">Estado público</a>
-          <a class="btn btn-ghost" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
-          {% if wa_link %}<a class="btn btn-whatsapp" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
-          <a class="btn btn-ghost" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
+        <div class="finance-row">
+          <span><strong>Finanzas:</strong></span>
+          <span>Aprobado ${{ approved_total|floatformat:2 }}</span>
+          <span>Pagado ${{ paid_total|floatformat:2 }}</span>
+          <span>Saldo ${{ balance|floatformat:2 }}</span>
+        </div>
+        <p class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</p>
+        {% if order.warranty_parent %}
+          <p class="muted">Orden por garantia de {{ order.warranty_parent.folio }}</p>
+        {% endif %}
+        {% if order.warranty_children.exists %}
+          <p><strong>Servicios por garantia:</strong></p>
+          <ul class="muted">
+            {% for child in order.warranty_children.all %}
+              <li><a href="{% url 'order_detail' child.pk %}">{{ child.folio }}</a></li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        <div class="card-actions">
+          <a class="btn btn-full" href="{{ public_url }}" target="_blank">Estado público</a>
+          <a class="btn btn-ghost btn-full" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
+          {% if wa_link %}<a class="btn btn-whatsapp btn-full" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+          <a class="btn btn-ghost btn-full" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
+          {% if order.status == "DONE" %}
+            <form method="post" action="{% url 'order_open_warranty' order.pk %}" style="width:100%;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-full">Abrir servicio por garantía</button>
+            </form>
+          {% endif %}
+          {% if is_manager_user and order.status != "CANC" %}
+            <form method="post" action="{% url 'order_cancel' order.pk %}" style="width:100%;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-full">Marcar como cancelado</button>
+            </form>
+          {% endif %}
         </div>
       </div>
-      <div class="card">
+      <div class="card order-card">
         <h2>Cliente y equipo</h2>
         <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
         <p class="muted">Tel: {{ order_customer.phone|default:"-" }}{% if order_customer.alt_phone %} / {{ order_customer.alt_phone }}{% endif %} &middot; Email: {{ order_customer.email|default:"-" }}</p>
@@ -103,9 +162,12 @@
           <a class="btn btn-ghost" style="margin-top:10px;" href="{% url 'customer_devices' order_customer.id %}" target="_blank" rel="noopener">
             Ver todos los dispositivos del cliente
           </a>
+          <a class="btn" style="margin-top:8px;" href="{% url 'customer_edit' order_customer.id %}?next={{ request.path }}">
+            Editar datos del cliente
+          </a>
         {% endif %}
       </div>
-      <div class="card">
+      <div class="card order-card">
         <h2>Cotización</h2>
         <p><strong>Estado:</strong> {{ estimate_status }}</p>
         {% if estimate %}
@@ -117,35 +179,37 @@
         {% else %}
           <p class="muted">(sin cotización)</p>
         {% endif %}
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;">
-          <a class="btn" href="{% url 'estimate_edit' order.pk %}">Editar</a>
-          {% if estimate_has_items and can_send_estimate %}
-            <form method="post" action="{% url 'estimate_send' order.pk %}">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-ghost">Enviar por correo</button>
-            </form>
-            <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-whatsapp">Enviar por WhatsApp</button>
-            </form>
-          {% endif %}
+        <div class="quote-actions">
+          <a class="btn btn-full btn-block" href="{% url 'estimate_edit' order.pk %}">Editar</a>
           {% if estimate_public_url %}
-            <a class="btn btn-ghost" href="{{ estimate_public_url }}" target="_blank">Ver público</a>
+            <a class="btn btn-ghost btn-full btn-block" href="{{ estimate_public_url }}" target="_blank">Ver público</a>
+          {% endif %}
+          {% if estimate_has_items and can_send_estimate %}
+            <div class="quote-send-row">
+              <form method="post" action="{% url 'estimate_send' order.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-block btn-send">Enviar por correo</button>
+              </form>
+              <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-whatsapp btn-block btn-send">Enviar por WhatsApp</button>
+              </form>
+            </div>
           {% endif %}
         </div>
       </div>
-      <div class="card" style="text-align:left;">
+      <div class="card order-card" style="text-align:left;">
         <h2>Equipos y fallas</h2>
         {% if order_devices %}
           <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;align-items:stretch;text-align:left;">
             {% for device in order_devices %}
               <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#f8fbff;text-align:left;">
-                <p style="margin:0;font-weight:600;text-align:left;">
+                <p style="margin:0;font-weight:700;text-align:left;">
                   {{ device.brand }} {{ device.model }}
                   {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
                 </p>
-                <p style="margin:6px 0 0;white-space:pre-wrap;text-align:left;">
-                  <strong>Falla:</strong>
+                <p style="margin:6px 0 0;text-align:left;font-weight:700;">Falla:</p>
+                <p style="margin:2px 0 0;white-space:pre-wrap;text-align:left;">
                   {% if device.notes %}
                     {{ device.notes }}
                   {% else %}
@@ -321,4 +385,3 @@
   </main>
 </body>
 </html>
-

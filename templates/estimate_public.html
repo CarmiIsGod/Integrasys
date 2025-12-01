@@ -19,12 +19,20 @@
     th,td{padding:11px 12px;text-align:left;border-bottom:1px solid #e5e7eb}
     th{background:#eef2ff;font-weight:600;color:#1f2937}
     tbody tr:last-child td{border-bottom:none}
+    .status-options{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .status-options label{display:flex;align-items:center;gap:6px;font-size:14px;color:#374151}
+    .status-options input{accent-color:#2563eb}
     .totals{margin-top:18px;display:grid;gap:8px;font-size:16px}
     .totals div{display:flex;justify-content:space-between}
+    .totals .accepted{padding-top:8px;border-top:1px solid #e5e7eb;font-weight:700;color:#0f172a}
     .actions{margin-top:26px;display:flex;flex-wrap:wrap;gap:12px}
     form.inline{display:inline}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:13px;font-weight:600}
+    .badge-ok{background:#dcfce7;color:#166534;border:1px solid #86efac}
+    .badge-muted{background:#f3f4f6;color:#374151;border:1px solid #e5e7eb}
     button{padding:12px 20px;border-radius:10px;border:0;font-size:15px;font-weight:600;cursor:pointer;text-transform:none;background:#2563eb;color:#fff;transition:opacity 0.2s ease}
     button.secondary{background:#ef4444}
+    button.ghost{background:#fff;color:#111827;border:1px solid #d1d5db}
     button[disabled]{opacity:0.45;cursor:not-allowed}
     .help{margin-top:16px;font-size:14px;color:#4b5563}
     a.link{color:#2563eb;font-weight:600;text-decoration:none}
@@ -69,40 +77,75 @@
     <div style="margin-top:6px"><strong>Total:</strong> ${{ total|floatformat:2 }}</div>
   </section>
 
-  <div class="table-wrapper">
-  <table>
-    <thead>
-      <tr>
-        <th>Concepto</th>
-        <th style="width:110px">Cantidad</th>
-        <th style="width:130px">Precio unitario</th>
-        <th style="width:130px">Importe</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in items %}
-      <tr>
-        <td>{{ item.description }}</td>
-        <td>{{ item.qty }}</td>
-        <td>${{ item.unit_price|floatformat:2 }}</td>
-        <td>${{ item.line_total|floatformat:2 }}</td>
-      </tr>
-      {% empty %}
-      <tr>
-        <td colspan="4">No hay partidas registradas para esta cotizacion.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-
-  <div class="card">
-    <div class="totals">
-      <div><span>Subtotal</span><span>${{ subtotal|floatformat:2 }}</span></div>
-      <div><span>IVA</span><span>${{ tax|floatformat:2 }}</span></div>
-      <div><strong>Total</strong><strong>${{ total|floatformat:2 }}</strong></div>
+  {% if messages %}
+    <div class="card">
+      <ul style="margin:0;padding-left:18px;color:#b91c1c;">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
     </div>
-  </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'estimate_update_items' estimate.token %}">
+    {% csrf_token %}
+    <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th style="width:110px">Cantidad</th>
+          <th style="width:130px">Precio unitario</th>
+          <th style="width:130px">Importe</th>
+          <th style="width:220px">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.description }}</td>
+          <td>{{ item.qty }}</td>
+          <td>${{ item.unit_price|floatformat:2 }}</td>
+          <td>${{ item.line_total|floatformat:2 }}</td>
+          <td data-item-id="{{ item.id }}">
+            {% if not is_closed and item.status == item_status_pending %}
+              <div class="status-options">
+                <label><input type="radio" name="item-{{ item.id }}-status" value="{{ item_status_accepted }}"> Acepto</label>
+                <label><input type="radio" name="item-{{ item.id }}-status" value="{{ item_status_rejected }}"> No acepto</label>
+              </div>
+            {% elif item.status == item_status_accepted %}
+              <span class="badge badge-ok">Aceptado{% if item.decided_at %} el {{ item.decided_at|date:"Y-m-d H:i" }}{% endif %}</span>
+            {% else %}
+              <span class="badge badge-muted">No aceptado{% if item.decided_at %} el {{ item.decided_at|date:"Y-m-d H:i" }}{% endif %}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5">No hay partidas registradas para esta cotizacion.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <div class="card">
+      <div class="totals">
+        <div><span>Subtotal cotizado</span><span>${{ subtotal|floatformat:2 }}</span></div>
+        <div><span>IVA</span><span>${{ tax|floatformat:2 }}</span></div>
+        <div><strong>Total cotizado</strong><strong>${{ total|floatformat:2 }}</strong></div>
+        <div class="accepted"><span>Total aceptado</span><span>${{ accepted_total|floatformat:2 }}</span></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      {% if not is_closed %}
+        <button type="submit" class="ghost">Guardar seleccion</button>
+      {% else %}
+        <button type="button" class="ghost" disabled>Cotizacion cerrada</button>
+      {% endif %}
+    </div>
+  </form>
 
   {% if note %}
     <section class="note">
@@ -111,21 +154,10 @@
     </section>
   {% endif %}
 
-  <div class="actions">
-    <form method="post" action="{% url 'estimate_approve' estimate.token %}" class="inline">
-      {% csrf_token %}
-      <button type="submit"{% if not is_pending %} disabled{% endif %}>Aprobar cotizacion</button>
-    </form>
-    <form method="post" action="{% url 'estimate_decline' estimate.token %}" class="inline">
-      {% csrf_token %}
-      <button type="submit" class="secondary"{% if not is_pending %} disabled{% endif %}>Rechazar cotizacion</button>
-    </form>
-  </div>
-
-  {% if not is_pending %}
-    <p class="help">Esta cotizacion ya tiene una respuesta registrada. Puedes volver a consultar el estado de tu servicio en cualquier momento.</p>
+  {% if not is_closed %}
+    <p class="help">Selecciona Acepto o No acepto en cada partida y guarda tu decision. Al guardar se cerrara esta cotizacion.</p>
   {% else %}
-    <p class="help">Selecciona una opcion para confirmar tu decision. Nos pondremos en contacto contigo enseguida.</p>
+    <p class="help">Esta cotizacion ya esta cerrada. Si necesitas cambios o una nueva cotizacion, contactanos.</p>
   {% endif %}
 
   <p class="help"><a class="link" href="{% url 'public_status' order.token %}">Ver seguimiento de la orden</a></p>

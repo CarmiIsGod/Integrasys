@@ -16,6 +16,11 @@
     .muted{color:#64748b;font-size:14px;margin:0;}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;}
+    .section-title{display:inline-flex;align-items:center;gap:8px;font-size:20px;font-weight:700;color:#1d4ed8;margin:0;}
+    .section-icon{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;}
+    .section-icon--client{background:#e0f2fe;color:#0284c7;}
+    .section-icon--notes{background:#f3e8ff;color:#7c3aed;}
+    .section-icon--devices{background:#e5e7eb;color:#334155;}
     .customer-search-results{border:1px solid #cbd5f5;border-radius:10px;margin-top:8px;display:flex;flex-direction:column;gap:4px;padding:6px;background:#f8fbff;max-height:220px;overflow:auto;}
     .customer-search-results[hidden]{display:none;}
     .customer-search-result{display:flex;flex-direction:column;align-items:flex-start;border:1px solid transparent!important;background:#f8fafc!important;color:#0f172a!important;text-align:left;padding:8px;border-radius:8px;cursor:pointer;gap:2px;font-size:14px;}
@@ -82,7 +87,7 @@
       {% csrf_token %}
       <div class="grid">
         <div class="card">
-          <h2>Cliente</h2>
+          <h2 class="section-title"><span class="section-icon section-icon--client">👤</span><span>Cliente</span></h2>
           <label>Buscar cliente existente</label>
           <input id="customer-search" type="text" placeholder="Nombre, telefono o correo..." data-search-url="{% url 'reception_customer_search' %}">
           <div id="customer-search-results" class="customer-search-results" hidden></div>
@@ -98,7 +103,7 @@
             <input name="phone" value="{{ prefill.phone }}" placeholder="10 d&iacute;gitos" inputmode="tel" maxlength="14" autocomplete="tel">
             <div class="input-hint" data-error-for="phone" hidden>Debe tener 10 d&iacute;gitos.</div>
           </div>
-          <label style="margin-top:12px;">Tel&eacute;fono adicional</label>
+          <label style="margin-top:12px;">Tel&eacute;fono 2 (opcional)</label>
           <div>
             <input name="alt_phone" value="{{ prefill.alt_phone }}" placeholder="Opcional (10 d&iacute;gitos)" inputmode="tel" maxlength="14" autocomplete="tel">
             <div class="input-hint" data-error-for="alt_phone" hidden>Debe tener 10 d&iacute;gitos.</div>
@@ -108,7 +113,7 @@
           <p class="muted" style="margin-top:10px;">Si los datos coinciden con un cliente existente se reutilizar&aacute;n autom&aacute;ticamente.</p>
         </div>
         <div class="card">
-          <h2>Notas internas</h2>
+          <h2 class="section-title"><span class="section-icon section-icon--notes">📝</span><span>Notas internas</span></h2>
           <label>Notas</label>
           <textarea name="notes" placeholder="Comentarios generales, accesorios, prioridad...">{{ prefill.notes }}</textarea>
         </div>
@@ -117,10 +122,9 @@
       <div class="card" style="margin-top:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
           <div>
-            <h2>Dispositivos</h2>
+            <h2 class="section-title"><span class="section-icon section-icon--devices">🖥️</span><span>Dispositivos</span></h2>
             <p class="muted" style="margin:4px 0 0;">Agrega cada dispositivo (m&aacute;x. {{ device_formset.max_num }} por orden).</p>
           </div>
-          <button type="button" class="btn btn-ghost" id="add-device-btn">A&ntilde;adir dispositivo</button>
         </div>
         {{ device_formset.management_form }}
         <div id="device-formset" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
@@ -179,6 +183,9 @@
             </div>
           {% endfor %}
         </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+          <button type="button" class="btn btn-ghost" id="add-device-btn">A&ntilde;adir dispositivo</button>
+        </div>
       </div>
 
       <div class="actions" style="margin-top:16px;">
@@ -236,6 +243,9 @@
   </main>
   <script>
     document.addEventListener("DOMContentLoaded", function(){
+      document.querySelectorAll('textarea[name$="-notes"]').forEach((el) => {
+        el.placeholder = "Describe el problema, sintomas, detalles relevantes, accesorios, etc.";
+      });
       const searchInput = document.getElementById("customer-search");
       if (searchInput) {
         const searchUrl = searchInput.dataset.searchUrl || "";
