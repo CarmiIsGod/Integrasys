@@ -29,7 +29,7 @@
 
   <div class="card">
     <form method="get" class="toolbar" style="margin:0 0 10px 0;">
-      <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nombre, teléfono o email">
+      <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nombre, telefono o email">
       <button type="submit" class="btn btn-primary">Buscar</button>
     </form>
 
@@ -39,6 +39,7 @@
           <th>Nombre</th>
           <th>Teléfonos</th>
           <th>Email</th>
+          <th># órdenes</th>
           <th style="width:120px;">Acciones</th>
         </tr>
       </thead>
@@ -48,10 +49,11 @@
             <td>{{ customer.name|default:"-" }}</td>
             <td>{{ customer.phone|default:"-" }}{% if customer.alt_phone %} / {{ customer.alt_phone }}{% endif %}</td>
             <td>{{ customer.email|default:"-" }}</td>
+            <td>{{ customer.order_count|default:0 }}</td>
             <td><a class="btn btn-primary" href="{% url 'customer_edit' customer.pk %}">Editar</a></td>
           </tr>
         {% empty %}
-          <tr><td colspan="4">No hay clientes.</td></tr>
+          <tr><td colspan="5">No hay clientes.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -677,10 +677,10 @@ def inventory_delete(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def customer_list(request):
     q = (request.GET.get("q", "") or "").strip()
-    qs = Customer.objects.all().order_by("name")
+    qs = Customer.objects.annotate(order_count=Count("orders", distinct=True)).order_by("name")
     if q:
         qs = qs.filter(
             Q(name__icontains=q)
@@ -699,7 +699,7 @@ def customer_list(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
 def customer_edit(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     next_url = (request.GET.get("next") or "").strip()

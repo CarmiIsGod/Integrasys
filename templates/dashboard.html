@@ -67,7 +67,10 @@
     <div class="layout">
         <div class="header-actions">
             <h1>Panel de servicio</h1>
-            <a href="{% url 'reception_home' %}" class="btn-primary">Ir a Recepción</a>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a href="{% url 'customer_list' %}" class="btn-secondary">Clientes</a>
+                <a href="{% url 'reception_home' %}" class="btn-primary">Ir a Recepción</a>
+            </div>
         </div>
         <form method="get" class="filters">
             <div>
