@@ -1,0 +1,165 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Ticket {{ order.folio }}</title>
+  <style>
+    :root {
+      --ticket-font-size: 9pt;
+      --ticket-line-height: 1.25;
+    }
+    * { box-sizing: border-box; }
+    body.ticket-body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: var(--ticket-font-size);
+      line-height: var(--ticket-line-height);
+      margin: 0;
+      padding: 0;
+      background: #f3f4f6;
+    }
+    .tickets-wrapper {
+      width: 100%;
+      margin: 0 auto;
+      padding: 0;
+    }
+    .ticket {
+      width: 100%;
+      max-width: 58mm;
+      margin: 16px auto;
+      padding: 8px 10px 10px;
+      border-bottom: 1px dashed #cbd5e1;
+      background: #fff;
+      page-break-after: always;
+      border-radius: 4px;
+    }
+    .ticket:last-child {
+      border-bottom: none;
+      page-break-after: auto;
+    }
+    .ticket-header { text-align: left; margin-bottom: 6px; }
+    .title { font-size: 10pt; font-weight: 700; margin: 0 0 2mm; }
+    .label {
+      font-size: 9pt;
+      font-weight: 700;
+    }
+    .value {
+      font-size: 9pt;
+      font-weight: 400;
+    }
+    .row { font-size: 9pt; margin: 1.5mm 0; line-height: 1.35; }
+    .ticket-brand { text-align: center; margin-bottom: 3mm; }
+    .ticket-logo { width: 26mm; height: auto; display: inline-block; }
+    .ticket-qr {
+      text-align: center;
+      margin: 3mm 0;
+    }
+    .ticket-qr-img {
+      display: block;
+      margin: 0 auto;
+      width: 36mm;
+      height: 36mm;
+    }
+    .ticket-line {
+      border-top: 1px solid #000;
+      margin: 3mm 0;
+    }
+    .ticket-footer {
+      margin-top: 2mm;
+      font-size: 8pt;
+      text-align: center;
+    }
+    @media print {
+      @page {
+        size: 80mm auto;
+        margin: 3mm 3mm 4mm 3mm;
+      }
+      html, body.ticket-body {
+        margin: 0;
+        padding: 0;
+        width: 80mm;
+        background: #fff;
+      }
+      .tickets-wrapper {
+        width: 100%;
+      }
+      .ticket {
+        max-width: 100%;
+        width: 100%;
+        margin: 0 auto 4mm;
+        padding: 2mm 2mm 3mm;
+        border-radius: 0;
+        border-bottom: 1px dashed #999;
+      }
+      .ticket:last-child {
+        border-bottom: none;
+      }
+      .ticket-qr-img {
+        width: 36mm;
+        height: 36mm;
+      }
+    }
+    @media screen {
+      body.ticket-body {
+        background: #f3f4f6;
+      }
+      .ticket {
+        box-shadow: 0 0 0 1px #e5e7eb;
+      }
+    }
+  </style>
+  <script>
+    window.addEventListener("load", function () {
+      window.print();
+    });
+  </script>
+</head>
+<body class="ticket-body">
+  <div class="tickets-wrapper">
+    {% for device in devices %}
+      <div class="ticket">
+        <div class="ticket-header">
+          <div class="ticket-brand">
+            <img src="{% static 'img/brand/imago-azul.png?v=2' %}" alt="Integrasys" class="ticket-logo">
+          </div>
+          <p class="title">Recibo de recepcion</p>
+          <div class="row"><span class="label">Folio:</span> <span class="value">{{ order.folio }}</span></div>
+          <div class="row"><span class="label">Fecha:</span> <span class="value">{{ order.checkin_at|date:"Y-m-d H:i" }}</span></div>
+        </div>
+        {% if public_qr_url or qr_b64 %}
+          <div class="ticket-qr">
+            {% if public_qr_url %}
+              <img src="{{ public_qr_url }}" alt="Codigo QR" class="ticket-qr-img">
+            {% else %}
+              <img src="data:image/png;base64,{{ qr_b64 }}" alt="Codigo QR" class="ticket-qr-img">
+            {% endif %}
+          </div>
+        {% endif %}
+        <div class="row"><span class="label">Cliente:</span> <span class="value">{{ customer.name|default:"-" }}</span></div>
+        <div class="row"><span class="label">Telefono:</span> <span class="value">{{ customer.phone|default:"-" }}{% if customer.alt_phone %} / {{ customer.alt_phone }}{% endif %}</span></div>
+        <div class="row"><span class="label">Email:</span> <span class="value">{{ customer.email|default:"-" }}</span></div>
+        <div class="ticket-line"></div>
+        <div class="row"><span class="label">Equipo:</span>
+          <span class="value">
+            {{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}
+          </span>
+        </div>
+        <div class="row"><span class="label">Falla:</span></div>
+        <div class="row value">
+          {{ device.notes|default:"Sin descripcion de falla" }}
+        </div>
+        <div class="ticket-line"></div>
+        <div class="row"><span class="label">Accesorios:</span></div>
+        <div class="row value">
+          {{ device.accessories_notes|default:"Sin accesorios declarados" }}
+        </div>
+        <div class="row"><span class="label">Contrasena / PIN:</span></div>
+        <div class="row value">
+          {{ device.password_notes|default:"No proporcionada" }}
+        </div>
+        <div class="ticket-footer">Conserve este ticket.</div>
+      </div>
+    {% endfor %}
+  </div>
+</body>
+</html>
