@@ -183,9 +183,9 @@
             </a>
           {% endif %}
         </div>
-        {% if can_assign %}
-          <div class="card order-card">
-            <h2>Asignar técnico</h2>
+        <div class="card order-card">
+          <h2>Asignar técnico / Estado</h2>
+          {% if can_assign %}
             <form method="post" action="{% url 'assign_tech' order.pk %}" class="inline" style="margin-top:8px;">
               {% csrf_token %}
               <select name="user_id" required style="padding:8px;border:1px solid #cbd5f5;border-radius:8px;">
@@ -196,8 +196,36 @@
               </select>
               <button type="submit">Asignar</button>
             </form>
+          {% endif %}
+
+          <div style="margin-top:16px;">
+            <h3 style="margin:0 0 8px;color:#1d4ed8;font-size:16px;">Cambiar estado</h3>
+            {% if allowed_next %}
+              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
+                {% for code,label in status_choices %}
+                  {% if code in allowed_next %}
+                    {% if code != 'DONE' or is_superuser %}
+                      {% if code == 'AUTH' %}
+                        <form method="post" action="{% url 'change_status_auth' order.pk %}">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                        </form>
+                      {% else %}
+                        <form method="post" action="{% url 'change_status' order.pk %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="target" value="{{ code }}">
+                          <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                        </form>
+                      {% endif %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="margin-top:8px;">No hay transiciones disponibles.</p>
+            {% endif %}
           </div>
-        {% endif %}
+        </div>
       </section>
 
       <section class="order-row order-row-middle">
@@ -325,33 +353,6 @@
       </section>
 
       <section class="order-row order-row-bottom">
-        <div class="card">
-          <h2>Cambiar estado</h2>
-          {% if allowed_next %}
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
-              {% for code,label in status_choices %}
-                {% if code in allowed_next %}
-                  {% if code != 'DONE' or is_superuser %}
-                    {% if code == 'AUTH' %}
-                      <form method="post" action="{% url 'change_status_auth' order.pk %}">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-ghost">{{ label }}</button>
-                      </form>
-                    {% else %}
-                      <form method="post" action="{% url 'change_status' order.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="target" value="{{ code }}">
-                        <button type="submit" class="btn btn-ghost">{{ label }}</button>
-                      </form>
-                    {% endif %}
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="muted" style="margin-top:8px;">No hay transiciones disponibles.</p>
-          {% endif %}
-        </div>
         <div class="card" style="overflow-x:auto;">
           <h2>Refacciones usadas</h2>
           <form method="post" action="{% url 'add_part' order.pk %}" class="inline">
