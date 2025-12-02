@@ -344,6 +344,39 @@ def receipt_pdf(request, token):
 
 
 @login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
+def order_ticket_view(request, pk):
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
+        pk=pk,
+    )
+    devices = _order_devices(order)
+    public_url = request.build_absolute_uri(reverse("public_status", args=[order.token]))
+
+    qr_b64 = ""
+    public_qr_url = ""
+    try:
+        buf = BytesIO()
+        qrcode.make(public_url).save(buf, format="PNG")
+        qr_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        public_qr_url = f"data:image/png;base64,{qr_b64}"
+    except Exception:
+        qr_b64 = ""
+        public_qr_url = ""
+
+    context = {
+        "order": order,
+        "devices": devices,
+        "customer": order.get_customer(),
+        "public_url": public_url,
+        "public_status_url": public_url,
+        "qr_b64": qr_b64,
+        "public_qr_url": public_qr_url,
+    }
+    return render(request, "tickets/order_ticket.html", context)
+
+
+@login_required(login_url="/admin/login/")
 @require_manager
 def dashboard(request):
     q = (request.GET.get("q", "") or "").strip()
@@ -1263,7 +1296,7 @@ def change_status_auth(request, pk):
                 "Orden marcada como Requiere autorizacion, pero ocurrio un error al enviar el correo.",
             )
 
-    return redirect("estimate_edit", pk=order.pk)
+    return redirect("order_detail", pk=order.pk)
 
 
 @login_required(login_url="/admin/login/")
@@ -1282,7 +1315,7 @@ def change_status(request, pk):
 
     if not order.can_transition_to(target):
         messages.error(request, "Transicion de estado invalida.")
-        return redirect("list_orders")
+        return redirect("order_detail", pk=order.pk)
 
     if target == ServiceOrder.Status.REQUIRES_AUTH:
         messages.error(request, "Usa el flujo de autorizacion dedicado.")
@@ -1291,14 +1324,14 @@ def change_status(request, pk):
     if is_tecnico(request.user):
         if order.assigned_to_id != request.user.id:
             messages.error(request, "Solo puedes actualizar tus ordenes asignadas.")
-            return redirect("list_orders")
+            return redirect("order_detail", pk=order.pk)
         if target not in {"REV", "WAI", "READY"}:
             messages.error(request, "Los tecnicos solo pueden cambiar a REV, WAI o READY.")
-            return redirect("list_orders")
+            return redirect("order_detail", pk=order.pk)
 
     if target == "DONE" and not request.user.is_superuser:
         messages.error(request, "Solo un superusuario puede marcar como Entregado.")
-        return redirect("list_orders")
+        return redirect("order_detail", pk=order.pk)
 
     if target == "DONE" and hasattr(order, "balance"):
         balance_value = order.balance
@@ -1323,7 +1356,7 @@ def change_status(request, pk):
         order.transition_to(target, author=request.user, author_role=actor_role)
     except ValueError:
         messages.error(request, "Transicion de estado invalida.")
-        return redirect("list_orders")
+        return redirect("order_detail", pk=order.pk)
     _record_status_update(
         order,
         channel="status_change",
@@ -1365,10 +1398,10 @@ def change_status(request, pk):
             if error_code == "missing_email":
                 messages.info(request, "No se envi\u00f3 correo porque el cliente no tiene email registrado.")
             else:
-                messages.warning(request, "Se actualizo el estado, pero fallo el envio de correo al cliente.")
+                  messages.warning(request, "Se actualizo el estado, pero fallo el envio de correo al cliente.")
 
     messages.success(request, f"Estado actualizado a {order.get_status_display()}.")
-    return redirect("list_orders")
+    return redirect("order_detail", pk=order.pk)
 
 
 @login_required(login_url="/admin/login/")

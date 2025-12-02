@@ -35,6 +35,7 @@ urlpatterns = [
     path("recepcion/nueva-orden/", views.reception_new_order, name="reception_new_order"),
     path("recepcion/ordenes/", views.list_orders, name="list_orders"),
     path("recepcion/ordenes/<int:pk>/", views.order_detail, name="order_detail"),
+    path("recepcion/ordenes/<int:pk>/ticket/", views.order_ticket_view, name="order_ticket"),
     path("recepcion/ordenes/<int:pk>/pago/", views.add_payment, name="add_payment"),
     path("recepcion/ordenes/p/<int:payment_id>/recibo.pdf", views.payment_receipt_pdf, name="payment_receipt_pdf"),
     path("recepcion/ordenes/<int:pk>/status/", views.change_status, name="change_status"),

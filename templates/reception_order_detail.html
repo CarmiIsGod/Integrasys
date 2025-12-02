@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 <head>
   {% load static %}
@@ -20,10 +20,11 @@
     .btn-full{width:100%;display:block;}
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;min-width:0;}
     .order-card{background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 8px 18px rgba(15,23,42,0.06);border:1px solid #e2e8f0;}
-    .order-header-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px;width:100%;}
-    @media (max-width:1200px){.order-header-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-    @media (max-width:768px){.order-header-grid{grid-template-columns:1fr;}}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:18px;width:100%;}
+    .order-layout{display:flex;flex-direction:column;gap:20px;}
+    .order-row{display:grid;gap:16px;width:100%;margin-bottom:4px;}
+    .order-row-top{grid-template-columns:repeat(3,minmax(0,1fr));}
+    .order-row-middle,.order-row-lower{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .order-row-bottom{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}
     .card-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
     .card-actions .btn,
     .card-actions button,
@@ -74,7 +75,6 @@
     }
     @media (max-width:900px){
       body{padding:16px;}
-      .grid{grid-template-columns:1fr;}
       .card{padding:14px;}
       h1{font-size:24px;}
       form.inline{flex-direction:column;}
@@ -82,6 +82,15 @@
     @media (max-width:600px){
       body{padding:12px;}
       th,td{padding:10px;}
+    }
+    @media (max-width:1200px){
+      .order-row-top{grid-template-columns:repeat(2,minmax(0,1fr));}
+    }
+    @media (max-width:768px){
+      .order-row-top,
+      .order-row-middle,
+      .order-row-lower,
+      .order-row-bottom{grid-template-columns:1fr;}
     }
   </style>
 </head>
@@ -93,7 +102,7 @@
         <h1>Orden {{ order.folio }}</h1>
         <p class="muted">Consulta y gestiona toda la información de la orden.</p>
       </div>
-      <a class="btn btn-ghost" href="{% url 'list_orders' %}">&larr; Órdenes</a>
+      <a class="btn btn-ghost" href="{% url 'list_orders' %}">&larr; Ordenes</a>
     </div>
 
     {% if messages %}
@@ -102,291 +111,295 @@
       </ul>
     {% endif %}
 
-    <div class="order-header-grid">
-      <div class="card order-card">
-        <h2>Resumen</h2>
-        <p><strong>Estatus:</strong> <span class="status-badge" style="--status-color: {{ order.status_color|default:'#94a3b8' }};"><span class="status-dot"></span>{{ order.get_status_display }}</span></p>
-        <p><strong>Ingreso:</strong> {{ order.checkin_at|date:"Y-m-d H:i" }}</p>
-        {% if order.checkout_at %}<p><strong>Salida:</strong> {{ order.checkout_at|date:"Y-m-d H:i" }}</p>{% endif %}
-        <div class="finance-row">
-          <span><strong>Finanzas:</strong></span>
-          <span>Aprobado ${{ approved_total|floatformat:2 }}</span>
-          <span>Pagado ${{ paid_total|floatformat:2 }}</span>
-          <span>Saldo ${{ balance|floatformat:2 }}</span>
-        </div>
-        <p class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</p>
-        {% if order.warranty_parent %}
-          <p class="muted">Orden por garantia de {{ order.warranty_parent.folio }}</p>
-        {% endif %}
-        {% if order.warranty_children.exists %}
-          <p><strong>Servicios por garantia:</strong></p>
-          <ul class="muted">
-            {% for child in order.warranty_children.all %}
-              <li><a href="{% url 'order_detail' child.pk %}">{{ child.folio }}</a></li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-        <div class="card-actions">
-          <a class="btn btn-full" href="{{ public_url }}" target="_blank">Estado público</a>
-          <a class="btn btn-ghost btn-full" href="{% url 'receipt_pdf' token=order.token %}" target="_blank">PDF</a>
-          {% if wa_link %}<a class="btn btn-whatsapp btn-full" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
-          <a class="btn btn-ghost btn-full" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
-          {% if order.status == "DONE" %}
-            <form method="post" action="{% url 'order_open_warranty' order.pk %}" style="width:100%;">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-ghost btn-full">Abrir servicio por garantía</button>
-            </form>
+    <div class="order-layout">
+      <section class="order-row order-row-top">
+        <div class="card order-card">
+          <h2>Resumen</h2>
+          <p><strong>Estatus:</strong> <span class="status-badge" style="--status-color: {{ order.status_color|default:'#94a3b8' }};"><span class="status-dot"></span>{{ order.get_status_display }}</span></p>
+          <p><strong>Ingreso:</strong> {{ order.checkin_at|date:"Y-m-d H:i" }}</p>
+          {% if order.checkout_at %}<p><strong>Salida:</strong> {{ order.checkout_at|date:"Y-m-d H:i" }}</p>{% endif %}
+          <div class="finance-row">
+            <span><strong>Finanzas:</strong></span>
+            <span>Aprobado ${{ approved_total|floatformat:2 }}</span>
+            <span>Pagado ${{ paid_total|floatformat:2 }}</span>
+            <span>Saldo ${{ balance|floatformat:2 }}</span>
+          </div>
+          <p class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</p>
+          {% if order.warranty_parent %}
+            <p class="muted">Orden por garantia de {{ order.warranty_parent.folio }}</p>
           {% endif %}
-          {% if is_manager_user and order.status != "CANC" %}
-            <form method="post" action="{% url 'order_cancel' order.pk %}" style="width:100%;">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-danger btn-full">Marcar como cancelado</button>
-            </form>
-          {% endif %}
-        </div>
-      </div>
-      <div class="card order-card">
-        <h2>Cliente y equipo</h2>
-        <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
-        <p class="muted">Tel: {{ order_customer.phone|default:"-" }}{% if order_customer.alt_phone %} / {{ order_customer.alt_phone }}{% endif %} &middot; Email: {{ order_customer.email|default:"-" }}</p>
-        <div style="margin-top:8px;">
-          <strong>Dispositivos:</strong>
-          {% if order_devices %}
-            <ul style="padding-left:18px;margin:8px 0;">
-              {% for device in order_devices %}
-                <li>
-                  {{ device.brand }} {{ device.model }}
-                  {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
-                </li>
+          {% if order.warranty_children.exists %}
+            <p><strong>Servicios por garantia:</strong></p>
+            <ul class="muted">
+              {% for child in order.warranty_children.all %}
+                <li><a href="{% url 'order_detail' child.pk %}">{{ child.folio }}</a></li>
               {% endfor %}
             </ul>
+          {% endif %}
+          <div class="card-actions">
+            <a class="btn btn-full" href="{{ public_url }}" target="_blank">Estado público</a>
+            <a class="btn btn-ghost btn-full" href="{% url 'order_ticket' order.pk %}" target="_blank">Ticket</a>
+            {% if wa_link %}<a class="btn btn-whatsapp btn-full" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+            <a class="btn btn-ghost btn-full" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
+            {% if order.status == "DONE" %}
+              <form method="post" action="{% url 'order_open_warranty' order.pk %}" style="width:100%;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-full">Abrir servicio por garantía</button>
+              </form>
+            {% endif %}
+            {% if is_manager_user and order.status != "CANC" %}
+              <form method="post" action="{% url 'order_cancel' order.pk %}" style="width:100%;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger btn-full">Marcar como cancelado</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card order-card">
+          <h2>Cliente y equipo</h2>
+          <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
+          <p class="muted">Tel: {{ order_customer.phone|default:"-" }}{% if order_customer.alt_phone %} / {{ order_customer.alt_phone }}{% endif %} &middot; Email: {{ order_customer.email|default:"-" }}</p>
+          <div style="margin-top:8px;">
+            <strong>Dispositivos:</strong>
+            {% if order_devices %}
+              <ul style="padding-left:18px;margin:8px 0;">
+                {% for device in order_devices %}
+                  <li>
+                    {{ device.brand }} {{ device.model }}
+                    {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="muted">(sin dispositivos asociados)</p>
+            {% endif %}
+          </div>
+          {% if order_customer %}
+            <a class="btn btn-ghost" style="margin-top:10px;" href="{% url 'customer_devices' order_customer.id %}" target="_blank" rel="noopener">
+              Ver todos los dispositivos del cliente
+            </a>
+            <a class="btn" style="margin-top:8px;" href="{% url 'customer_edit' order_customer.id %}?next={{ request.path }}">
+              Editar datos del cliente
+            </a>
+          {% endif %}
+        </div>
+        {% if can_assign %}
+          <div class="card order-card">
+            <h2>Asignar técnico</h2>
+            <form method="post" action="{% url 'assign_tech' order.pk %}" class="inline" style="margin-top:8px;">
+              {% csrf_token %}
+              <select name="user_id" required style="padding:8px;border:1px solid #cbd5f5;border-radius:8px;">
+                <option value="">- Selecciona técnico -</option>
+                {% for u in staff_users %}
+                  <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit">Asignar</button>
+            </form>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="order-row order-row-middle">
+        <div class="card order-card" style="text-align:left;">
+          <h2>Equipos y fallas</h2>
+          {% if order_devices %}
+            <div class="order-devices-list">
+              {% for device in order_devices %}
+                <div class="order-device-card">
+                  <p class="device-name">
+                    <strong>{{ device.brand }} {{ device.model }}</strong>
+                    {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+                  </p>
+                  <p class="device-failure-label">Falla:</p>
+                  <p class="device-failure-text">
+                    {% if device.notes %}
+                      {{ device.notes }}
+                    {% else %}
+                      <span class="muted">Sin descripción capturada.</span>
+                    {% endif %}
+                  </p>
+                  {% if device.password_notes %}
+                    <p class="device-extra">
+                      <strong>Contraseña / PIN:</strong> {{ device.password_notes }}
+                    </p>
+                  {% endif %}
+                  {% if device.accessories_notes %}
+                    <p class="device-extra">
+                      <strong>Accesorios:</strong> {{ device.accessories_notes }}
+                    </p>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
           {% else %}
             <p class="muted">(sin dispositivos asociados)</p>
           {% endif %}
         </div>
-        {% if order_customer %}
-          <a class="btn btn-ghost" style="margin-top:10px;" href="{% url 'customer_devices' order_customer.id %}" target="_blank" rel="noopener">
-            Ver todos los dispositivos del cliente
-          </a>
-          <a class="btn" style="margin-top:8px;" href="{% url 'customer_edit' order_customer.id %}?next={{ request.path }}">
-            Editar datos del cliente
-          </a>
-        {% endif %}
-      </div>
-      <div class="card order-card">
-        <h2>Cotización</h2>
-        <p><strong>Estado:</strong> {{ estimate_status }}</p>
-        {% if estimate %}
-          <p>Subtotal: ${{ estimate.subtotal|floatformat:2 }}</p>
-          <p>IVA: ${{ estimate.tax|floatformat:2 }}</p>
-          <p>Total: ${{ estimate.total|floatformat:2 }}</p>
-          {% if estimate.note %}<p class="muted">Nota: {{ estimate.note }}</p>{% endif %}
-          <p class="muted">IVA aplicado: {% if estimate.apply_tax %}Sí{% else %}No{% endif %}</p>
-        {% else %}
-          <p class="muted">(sin cotización)</p>
-        {% endif %}
-        <div class="quote-actions">
-          <a class="btn btn-full btn-block" href="{% url 'estimate_edit' order.pk %}">Editar</a>
-          {% if estimate_public_url %}
-            <a class="btn btn-ghost btn-full btn-block" href="{{ estimate_public_url }}" target="_blank">Ver público</a>
+        <div class="card order-card">
+          <h2>Cotización</h2>
+          <p><strong>Estado:</strong> {{ estimate_status }}</p>
+          {% if estimate %}
+            <p>Subtotal: ${{ estimate.subtotal|floatformat:2 }}</p>
+            <p>IVA: ${{ estimate.tax|floatformat:2 }}</p>
+            <p>Total: ${{ estimate.total|floatformat:2 }}</p>
+            {% if estimate.note %}<p class="muted">Nota: {{ estimate.note }}</p>{% endif %}
+            <p class="muted">IVA aplicado: {% if estimate.apply_tax %}Sí{% else %}No{% endif %}</p>
+          {% else %}
+            <p class="muted">(sin cotización)</p>
           {% endif %}
-          {% if estimate_has_items and can_send_estimate %}
-            <div class="quote-send-row">
-              <form method="post" action="{% url 'estimate_send' order.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-block btn-send">Enviar por correo</button>
-              </form>
-              <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-whatsapp btn-block btn-send">Enviar por WhatsApp</button>
-              </form>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-      <div class="card order-card" style="text-align:left;">
-        <h2>Equipos y fallas</h2>
-        {% if order_devices %}
-          <div class="order-devices-list">
-            {% for device in order_devices %}
-              <div class="order-device-card">
-                <p class="device-name">
-                  <strong>{{ device.brand }} {{ device.model }}</strong>
-                  {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
-                </p>
-                <p class="device-failure-label">Falla:</p>
-                <p class="device-failure-text">
-                  {% if device.notes %}
-                    {{ device.notes }}
-                  {% else %}
-                    <span class="muted">Sin descripción capturada.</span>
-                  {% endif %}
-                </p>
-                {% if device.password_notes %}
-                  <p class="device-extra">
-                    <strong>Contraseña / PIN:</strong> {{ device.password_notes }}
-                  </p>
-                {% endif %}
-                {% if device.accessories_notes %}
-                  <p class="device-extra">
-                    <strong>Accesorios:</strong> {{ device.accessories_notes }}
-                  </p>
-                {% endif %}
+          <div class="quote-actions">
+            <a class="btn btn-full btn-block" href="{% url 'estimate_edit' order.pk %}">Editar</a>
+            {% if estimate_public_url %}
+              <a class="btn btn-ghost btn-full btn-block" href="{{ estimate_public_url }}" target="_blank">Ver público</a>
+            {% endif %}
+            {% if estimate_has_items and can_send_estimate %}
+              <div class="quote-send-row">
+                <form method="post" action="{% url 'estimate_send' order.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-ghost btn-block btn-send">Enviar por correo</button>
+                </form>
+                <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-whatsapp btn-block btn-send">Enviar por WhatsApp</button>
+                </form>
               </div>
-            {% endfor %}
+            {% endif %}
           </div>
-        {% else %}
-          <p class="muted">(sin dispositivos asociados)</p>
-        {% endif %}
-      </div>
-    </div>
+        </div>
+      </section>
 
-    <div class="card" style="margin-bottom:18px;">
-      <h2>Pagos</h2>
-      {% if can_charge %}
-        <form method="post" action="{% url 'add_payment' order.pk %}" class="inline">
-          {% csrf_token %}
-          <input type="number" name="amount" step="0.01" min="0.01" placeholder="Monto" required>
-          <input type="text" name="method" maxlength="30" placeholder="Método" required>
-          <input type="text" name="reference" maxlength="80" placeholder="Referencia">
-          <select name="device_id">
-            <option value="">Aplica a la orden completa</option>
-            {% for device in order_devices %}
-              <option value="{{ device.id }}">{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</option>
-            {% endfor %}
-          </select>
-          <button type="submit">Registrar pago</button>
-        </form>
-      {% endif %}
-      <div style="margin-top:12px;overflow-x:auto;">
-        <table>
-          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Dispositivo</th></tr></thead>
-          <tbody>
-            {% for p in payments %}
-              <tr>
-                <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
-                <td>${{ p.amount|floatformat:2 }}</td>
-                <td>{{ p.method|default:"-" }}</td>
-                <td>{{ p.reference|default:"-" }}</td>
-                <td>
-                  {% if p.device %}
-                    {{ p.device.brand }} {{ p.device.model }}
-                    {% if p.device.serial %}<div class="muted">Serie: {{ p.device.serial }}</div>{% endif %}
-                  {% else %}
-                    <span class="muted">Orden completa</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <h2>Notas internas</h2>
-        <pre style="white-space:pre-wrap;font-family:inherit;background:#f8fbff;border:1px solid #dbeafe;border-radius:10px;padding:12px;">{{ order.notes|default:"(sin notas)" }}</pre>
-        <form method="post" action="{% url 'add_note' order.pk %}" class="inline" style="margin-top:10px;">
-          {% csrf_token %}
-          <textarea name="note" rows="3" placeholder="Agregar nota..." required></textarea>
-          <button type="submit">Guardar nota</button>
-        </form>
-      </div>
-      <div class="card">
-        <h2>Cambiar estado</h2>
-        {% if allowed_next %}
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
-            {% for code,label in status_choices %}
-              {% if code in allowed_next %}
-                {% if code != 'DONE' or is_superuser %}
-                  {% if code == 'AUTH' %}
-                    <form method="post" action="{% url 'change_status_auth' order.pk %}">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-ghost">{{ label }}</button>
-                    </form>
-                  {% else %}
-                    <form method="post" action="{% url 'change_status' order.pk %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="target" value="{{ code }}">
-                      <button type="submit" class="btn btn-ghost">{{ label }}</button>
-                    </form>
-                  {% endif %}
-                {% endif %}
-              {% endif %}
-            {% endfor %}
+      <section class="order-row order-row-lower">
+        <div class="card" style="margin-bottom:0;">
+          <h2>Pagos</h2>
+          {% if can_charge %}
+            <form method="post" action="{% url 'add_payment' order.pk %}" class="inline">
+              {% csrf_token %}
+              <input type="number" name="amount" step="0.01" min="0.01" placeholder="Monto" required>
+              <input type="text" name="method" maxlength="30" placeholder="Método" required>
+              <input type="text" name="reference" maxlength="80" placeholder="Referencia">
+              <select name="device_id">
+                <option value="">Aplica a la orden completa</option>
+                {% for device in order_devices %}
+                  <option value="{{ device.id }}">{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</option>
+                {% endfor %}
+              </select>
+              <button type="submit">Registrar pago</button>
+            </form>
+          {% endif %}
+          <div style="margin-top:12px;overflow-x:auto;">
+            <table>
+              <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Dispositivo</th></tr></thead>
+              <tbody>
+                {% for p in payments %}
+                  <tr>
+                    <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>${{ p.amount|floatformat:2 }}</td>
+                    <td>{{ p.method|default:"-" }}</td>
+                    <td>{{ p.reference|default:"-" }}</td>
+                    <td>
+                      {% if p.device %}
+                        {{ p.device.brand }} {{ p.device.model }}
+                        {% if p.device.serial %}<div class="muted">Serie: {{ p.device.serial }}</div>{% endif %}
+                      {% else %}
+                        <span class="muted">Orden completa</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="5" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-        {% else %}
-          <p class="muted" style="margin-top:8px;">No hay transiciones disponibles.</p>
-        {% endif %}
-      </div>
-      {% if can_assign %}
-        <div class="card">
-          <h2>Asignar técnico</h2>
-          <form method="post" action="{% url 'assign_tech' order.pk %}" class="inline" style="margin-top:8px;">
+        </div>
+        <div class="card" style="margin-bottom:0;">
+          <h2>Notas internas</h2>
+          <pre style="white-space:pre-wrap;font-family:inherit;background:#f8fbff;border:1px solid #dbeafe;border-radius:10px;padding:12px;">{{ order.notes|default:"(sin notas)" }}</pre>
+          <form method="post" action="{% url 'add_note' order.pk %}" class="inline" style="margin-top:10px;">
             {% csrf_token %}
-            <select name="user_id" required style="padding:8px;border:1px solid #cbd5f5;border-radius:8px;">
-              <option value="">— Selecciona técnico —</option>
-              {% for u in staff_users %}
-                <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
-              {% endfor %}
-            </select>
-            <button type="submit">Asignar</button>
+            <textarea name="note" rows="3" placeholder="Agregar nota..." required></textarea>
+            <button type="submit">Guardar nota</button>
           </form>
         </div>
-      {% endif %}
-    </div>
+      </section>
 
-    <div class="grid">
-      <div class="card" style="overflow-x:auto;">
-        <h2>Refacciones usadas</h2>
-        <form method="post" action="{% url 'add_part' order.pk %}" class="inline">
-          {% csrf_token %}
-          <input name="sku" placeholder="SKU" required>
-          <input name="qty" type="number" min="1" value="1" required style="width:80px;">
-          <input name="reason" placeholder="Motivo (opcional)">
-          <button type="submit" class="btn btn-ghost">Registrar</button>
-        </form>
-        <div class="table-wrapper">
-        <table style="margin-top:12px;">
-          <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
-          <tbody>
-            {% for m in parts %}
-              <tr>
-                <td class="muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
-                <td>{{ m.item.sku }}</td>
-                <td>{{ m.item.name }}</td>
-                <td>{{ m.delta }}</td>
-                <td>{{ m.reason|default:"-" }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" style="text-align:center;padding:18px;">Sin consumos registrados.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <section class="order-row order-row-bottom">
+        <div class="card">
+          <h2>Cambiar estado</h2>
+          {% if allowed_next %}
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
+              {% for code,label in status_choices %}
+                {% if code in allowed_next %}
+                  {% if code != 'DONE' or is_superuser %}
+                    {% if code == 'AUTH' %}
+                      <form method="post" action="{% url 'change_status_auth' order.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="{% url 'change_status' order.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="target" value="{{ code }}">
+                        <button type="submit" class="btn btn-ghost">{{ label }}</button>
+                      </form>
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="muted" style="margin-top:8px;">No hay transiciones disponibles.</p>
+          {% endif %}
         </div>
-      </div>
-      <div class="card" style="overflow-x:auto;">
-        <h2>Historial</h2>
-        <div class="table-wrapper">
-        <table>
-          <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
-          <tbody>
-            {% for h in history %}
-              <tr>
-                <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
-                <td>{{ h.get_status_display }}</td>
-                <td>{{ h.author|default:"-" }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="3" style="text-align:center;padding:18px;">Sin historial.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="card" style="overflow-x:auto;">
+          <h2>Refacciones usadas</h2>
+          <form method="post" action="{% url 'add_part' order.pk %}" class="inline">
+            {% csrf_token %}
+            <input name="sku" placeholder="SKU" required>
+            <input name="qty" type="number" min="1" value="1" required style="width:80px;">
+            <input name="reason" placeholder="Motivo (opcional)">
+            <button type="submit" class="btn btn-ghost">Registrar</button>
+          </form>
+          <div class="table-wrapper">
+          <table style="margin-top:12px;">
+            <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
+            <tbody>
+              {% for m in parts %}
+                <tr>
+                  <td class="muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
+                  <td>{{ m.item.sku }}</td>
+                  <td>{{ m.item.name }}</td>
+                  <td>{{ m.delta }}</td>
+                  <td>{{ m.reason|default:"-" }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="5" style="text-align:center;padding:18px;">Sin consumos registrados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
         </div>
-      </div>
+        <div class="card" style="overflow-x:auto;">
+          <h2>Historial</h2>
+          <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
+            <tbody>
+              {% for h in history %}
+                <tr>
+                  <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
+                  <td>{{ h.get_status_display }}</td>
+                  <td>{{ h.author|default:"-" }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="3" style="text-align:center;padding:18px;">Sin historial.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </section>
     </div>
   </main>
 </body>
