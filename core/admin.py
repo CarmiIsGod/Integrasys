@@ -1,4 +1,5 @@
-﻿from django.contrib import admin
+from django.contrib import admin
+from django.contrib import messages
 from django.utils.html import format_html
 from django.urls import reverse
 
@@ -9,7 +10,7 @@ from .models import (
     Customer, Device, ServiceOrder, StatusHistory,
     InventoryItem, InventoryMovement, Notification
 )
-from .utils import build_device_label, log_status_snapshot, send_order_status_email, format_csv_datetime
+from .utils import build_device_label, log_status_snapshot, send_order_status_email, format_csv_datetime, resolve_actor_role
 
 admin.site.site_header = "Integrasys - Administración"
 admin.site.site_title  = "Integrasys Admin"
@@ -32,8 +33,8 @@ class DeviceAdmin(admin.ModelAdmin):
 class StatusHistoryInline(admin.TabularInline):
     model = StatusHistory
     extra = 0
-    fields = ("from_status", "status", "author", "author_role", "created_at")
-    readonly_fields = ("from_status", "status", "author", "author_role", "created_at")
+    fields = ("from_status", "status", "author", "author_role", "note", "created_at")
+    readonly_fields = ("from_status", "status", "author", "author_role", "note", "created_at")
 
 
 def export_orders_csv(modeladmin, request, queryset):
@@ -94,14 +95,32 @@ class ServiceOrderAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         # Detecta cambio de estado
         old_status = None
+        target_status = obj.status
+        status_changed = False
         if change:
             old = ServiceOrder.objects.get(pk=obj.pk)
             old_status = old.status
+            status_changed = old_status != target_status
+
+        if status_changed:
+            ok, error = obj.validate_transition(target_status, user=request.user)
+            if not ok:
+                self.message_user(request, error or "Transicion de estado invalida.", level=messages.ERROR)
+                obj.status = old_status
+                super().save_model(request, obj, form, change)
+                return
+            obj.status = old_status
 
         super().save_model(request, obj, form, change)
 
-        # Guarda historial si es nueva o si cambió el estado
-        if not change or (old_status != obj.status):
+        if status_changed:
+            actor_role = resolve_actor_role(request.user)
+            try:
+                obj.transition_to(target_status, author=request.user, author_role=actor_role)
+            except ValueError as exc:
+                self.message_user(request, str(exc), level=messages.ERROR)
+                return
+        elif not change:
             log_status_snapshot(
                 obj,
                 author=request.user,
@@ -109,38 +128,38 @@ class ServiceOrderAdmin(admin.ModelAdmin):
                 new_status=obj.status,
             )
 
-            if obj.status in (
-                ServiceOrder.Status.READY_PICKUP,
-                ServiceOrder.Status.REQUIRES_AUTH,
-            ):
-                public_url = request.build_absolute_uri(reverse("public_status", args=[obj.token]))
-                device_label = build_device_label(obj)
-                extra_context = {}
-                if obj.status == ServiceOrder.Status.REQUIRES_AUTH and hasattr(obj, "estimate"):
-                    estimate = obj.estimate
-                    extra_context["estimate_url"] = request.build_absolute_uri(
-                        reverse("estimate_public", args=[estimate.token])
-                    )
-                    extra_context["has_items"] = estimate.items.exists()
-                notification = Notification.objects.create(
-                    order=obj,
-                    kind="email",
-                    channel="admin_status",
-                    payload={
-                        "order_folio": obj.folio,
-                        "order": obj.folio,
-                        "customer": getattr(getattr(obj.device, "customer", None), "name", ""),
-                        "device": device_label,
-                    },
+        if (not change or status_changed) and obj.status in (
+            ServiceOrder.Status.READY_PICKUP,
+            ServiceOrder.Status.REQUIRES_AUTH,
+        ):
+            public_url = request.build_absolute_uri(reverse("public_status", args=[obj.token]))
+            device_label = build_device_label(obj)
+            extra_context = {}
+            if obj.status == ServiceOrder.Status.REQUIRES_AUTH and hasattr(obj, "estimate"):
+                estimate = obj.estimate
+                extra_context["estimate_url"] = request.build_absolute_uri(
+                    reverse("estimate_public", args=[estimate.token])
                 )
-                send_order_status_email(
-                    order=obj,
-                    notification=notification,
-                    status_code=obj.status,
-                    public_url=public_url,
-                    device_label=device_label,
-                    extra_context=extra_context,
-                )
+                extra_context["has_items"] = estimate.items.exists()
+            notification = Notification.objects.create(
+                order=obj,
+                kind="email",
+                channel="admin_status",
+                payload={
+                    "order_folio": obj.folio,
+                    "order": obj.folio,
+                    "customer": getattr(getattr(obj.device, "customer", None), "name", ""),
+                    "device": device_label,
+                },
+            )
+            send_order_status_email(
+                order=obj,
+                notification=notification,
+                status_code=obj.status,
+                public_url=public_url,
+                device_label=device_label,
+                extra_context=extra_context,
+            )
 admin.site.register([InventoryItem, InventoryMovement, Notification])
 
 from core.models import Attachment

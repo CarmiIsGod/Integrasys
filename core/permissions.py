@@ -56,6 +56,25 @@ def is_manager(user):
     return user_in_group(user, ROLE_GERENCIA)
 
 
+def can_mark_order_done(user):
+    """
+    True only for roles allowed to marcar Entregado/DONE (or disparar auto-cierre):
+    - Superuser
+    - Gerencia
+    - Recepcion
+    Tecnicos no pueden.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    if is_gerencia(user):
+        return True
+    if is_recepcion(user):
+        return True
+    return False
+
+
 def require_manager(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):

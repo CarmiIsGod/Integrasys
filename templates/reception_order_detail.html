@@ -1,195 +1,427 @@
 <!doctype html>
+
 <html lang="es">
+
 <head>
+
   {% load static %}
+
   <meta charset="utf-8">
+
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.png?v=2' %}">
-  <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.png?v=2' %}">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/brand/imago-azul.pngv=2' %}">
+
+  <link rel="shortcut icon" href="{% static 'img/brand/imago-azul.pngv=2' %}">
+
   <title>Orden {{ order.folio }} | Integrasys</title>
+
   <style>
+
     *,*::before,*::after{box-sizing:border-box;}
+
     body{font-family:Segoe UI,Arial,sans-serif;background:#f5f7fb;margin:0;padding:24px;color:#1e293b;overflow-x:hidden;}
+
     h1{margin:0 0 12px;font-size:28px;}
+
     h2{margin:0 0 10px;font-size:20px;color:#1d4ed8;}
+
     .muted{color:#64748b;font-size:14px;}
+
     .btn{display:inline-block;background:#1d4ed8;color:#fff;padding:8px 14px;border-radius:999px;text-decoration:none;font-weight:600;text-align:center;min-width:160px;}
+
     .btn-ghost{background:#e2e8f0;color:#1e293b;}
+
+    .btn-warning{background:#f59e0b;color:#1f2937;border:1px solid #d97706;}
+
     .btn-whatsapp{background:#16a34a!important;color:#fff!important;}
+
     .btn-danger{background:#ef4444;color:#fff;border:1px solid #dc2626;}
+
     .btn-full{width:100%;display:block;}
+
     .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(15,23,42,0.08);border:1px solid #e2e8f0;min-width:0;}
+
     .order-card{background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 8px 18px rgba(15,23,42,0.06);border:1px solid #e2e8f0;}
+
     .order-layout{display:flex;flex-direction:column;gap:20px;}
+
     .order-row{display:grid;gap:16px;width:100%;margin-bottom:4px;}
+
     .order-row-top{grid-template-columns:repeat(3,minmax(0,1fr));}
+
     .order-row-middle,.order-row-lower{grid-template-columns:repeat(2,minmax(0,1fr));}
+
     .order-row-bottom{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}
+
     .card-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+
     .card-actions .btn,
+
     .card-actions button,
+
     .card-actions a{flex:1 1 150px;display:inline-flex;justify-content:center;align-items:center;text-align:center;white-space:nowrap;}
+
     @media (max-width:768px){
+
       .card-actions .btn,
+
       .card-actions button,
+
       .card-actions a{flex:1 1 100%;}
+
     }
+
     .quote-actions{margin-top:16px;display:flex;flex-direction:column;gap:10px;}
+
     .quote-actions .btn-block{width:100%;display:inline-flex;justify-content:center;align-items:center;}
+
     .quote-send-row{display:flex;gap:10px;}
+
     .quote-send-row form{flex:1 1 0;margin:0;}
+
     .quote-send-row .btn{flex:1 1 0;justify-content:center;width:100%;min-width:0;margin:0;}
+
     .quote-send-row .btn-send{flex:1 1 0;min-width:0;margin:0;width:100%;}
+
     .quote-send-row .btn-whatsapp,
+
     .quote-send-row .btn-ghost,
+
     .quote-send-row .btn-outline-dark{margin:0;}
+
     @media (max-width:640px){
+
       .quote-send-row{flex-direction:column;}
+
     }
+
     ul.messages{list-style:none;padding:0;margin:12px 0;}
+
     ul.messages li{background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:10px;border-radius:10px;font-weight:500;margin-bottom:6px;}
+
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,0.06);}
+
     th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left;}
+
     th{background:#eff4ff;color:#1d4ed8;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;}
+
     tbody tr:nth-child(odd){background:#f8fbff;}
+
     tbody tr:hover{background:#eef4ff;}
+
     form.inline{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;}
+
     form.inline input,form.inline textarea,form.inline select{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;}
+
     form.inline button{padding:8px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:600;cursor:pointer;}
+
     textarea{width:100%;padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;min-height:90px;}
+
     main{max-width:1200px;margin:0 auto;}
+
     .table-wrapper{overflow-x:auto;border-radius:12px;background:#fff;box-shadow:0 6px 16px rgba(15,23,42,0.06);margin-top:12px;}
+
     .table-wrapper table{box-shadow:none;border-radius:0;}
+
     .status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,0.04);font-size:13px;font-weight:600;color:#0f172a;border:1px solid #e2e8f0;}
+
     .finance-row{display:flex;flex-direction:column;gap:4px;}
+
     .finance-row span{display:block;}
+
     .status-dot{width:10px;height:10px;border-radius:50%;background:var(--status-color,#94a3b8);}
-    .order-devices-list{display:flex;flex-direction:column;gap:12px;margin-top:10px;}
-    .order-device-card{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#f8fbff;}
-    .order-device-card .device-name{margin:0 0 4px;font-weight:700;}
-    .order-device-card .device-failure-label{margin:4px 0 2px;font-weight:400;color:#4b5563;}
-    .order-device-card .device-failure-text{margin:0;font-weight:400;white-space:pre-line;}
-    .order-device-card .device-extra{margin:6px 0 0;white-space:pre-wrap;}
+
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-weight:700;font-size:12px;border:1px solid #f59e0b;background:#fef3c7;color:#92400e;}
+
+    .badge-warranty{background:#fef3c7;border-color:#f59e0b;color:#92400e;}
+
+    .alert-warning{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:10px;border-radius:10px;font-weight:600;margin-top:8px;}
+
+    .reopen-form{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:6px;}
+
+    .reopen-form label{font-size:13px;color:#475569;font-weight:600;}
+
+    .reopen-form input[type="text"], .reopen-form textarea{padding:8px;border:1px solid #cbd5f5;border-radius:8px;font-family:inherit;width:100%;}
+
+    .order-devices-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+    .order-device-card{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid #e2e8f0;border-radius:12px;padding:6px 10px;background:#f8fbff;}
+    .order-device-card p{margin:3px 0;line-height:1.2;text-align:left;}
+    .order-device-card .device-name{margin:0 0 3px;font-weight:700;}
+    .order-device-card .device-label{display:inline-block;margin-right:6px;font-weight:600;color:#1f2937;}
+    .order-device-card .device-detail{margin:3px 0;line-height:1.2;white-space:normal;text-align:left;}
+    .equipment-card{padding:12px 14px;}
+
     @media (max-width:1100px){
+
       .btn,.btn-ghost,form.inline button{width:100%;text-align:center;}
+
     }
+
     @media (max-width:900px){
+
       body{padding:16px;}
+
       .card{padding:14px;}
+
       h1{font-size:24px;}
+
       form.inline{flex-direction:column;}
+
     }
+
     @media (max-width:600px){
+
       body{padding:12px;}
+
       th,td{padding:10px;}
+
     }
+
     @media (max-width:1200px){
+
       .order-row-top{grid-template-columns:repeat(2,minmax(0,1fr));}
+
     }
+
     @media (max-width:768px){
+
       .order-row-top,
+
       .order-row-middle,
+
       .order-row-lower,
+
       .order-row-bottom{grid-template-columns:1fr;}
+
     }
+
   </style>
+
 </head>
+
 <body>
+
   {% include "partials/reception_nav.html" %}
+
   <main>
+
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+
       <div>
+
         <h1>Orden {{ order.folio }}</h1>
-        <p class="muted">Consulta y gestiona toda la información de la orden.</p>
+
+        {% if order.is_warranty %}
+
+          <div class="pill badge-warranty" style="display:inline-flex;margin-top:6px;">Orden de garant&#237;a</div>
+
+        {% endif %}
+
+        <p class="muted">Consulta y gestiona toda la informaci&#243;n de la orden.</p>
+
       </div>
+
       <a class="btn btn-ghost" href="{% url 'list_orders' %}">&larr; Ordenes</a>
+
     </div>
 
+
+
     {% if messages %}
+
       <ul class="messages">
+
         {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+
       </ul>
+
     {% endif %}
 
+
+
     <div class="order-layout">
+
       <section class="order-row order-row-top">
+
         <div class="card order-card">
+
           <h2>Resumen</h2>
+
           <p><strong>Estatus:</strong> <span class="status-badge" style="--status-color: {{ order.status_color|default:'#94a3b8' }};"><span class="status-dot"></span>{{ order.get_status_display }}</span></p>
+
           <p><strong>Ingreso:</strong> {{ order.checkin_at|date:"Y-m-d H:i" }}</p>
+
           {% if order.checkout_at %}<p><strong>Salida:</strong> {{ order.checkout_at|date:"Y-m-d H:i" }}</p>{% endif %}
+
           <div class="finance-row">
+
             <span><strong>Finanzas:</strong></span>
+
             <span>Aprobado ${{ approved_total|floatformat:2 }}</span>
+
             <span>Pagado ${{ paid_total|floatformat:2 }}</span>
+
             <span>Saldo ${{ balance|floatformat:2 }}</span>
+
           </div>
+
           <p class="muted">Asignado a: {{ order.assigned_to|default:"-" }}</p>
+
           {% if order.warranty_parent %}
+
             <p class="muted">Orden por garantia de {{ order.warranty_parent.folio }}</p>
+
           {% endif %}
+
           {% if order.warranty_children.exists %}
+
             <p><strong>Servicios por garantia:</strong></p>
+
             <ul class="muted">
+
               {% for child in order.warranty_children.all %}
+
                 <li><a href="{% url 'order_detail' child.pk %}">{{ child.folio }}</a></li>
+
               {% endfor %}
+
             </ul>
+
           {% endif %}
-          <div class="card-actions">
-            <a class="btn btn-full" href="{{ public_url }}" target="_blank">Estado público</a>
-            <a class="btn btn-ghost btn-full" href="{% url 'order_ticket' order.pk %}" target="_blank">Ticket</a>
-            {% if wa_link %}<a class="btn btn-whatsapp btn-full" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
-            <a class="btn btn-ghost btn-full" href="{% url 'order_attachments' order.pk %}">Adjuntos</a>
-            {% if order.status == "DONE" %}
-              <form method="post" action="{% url 'order_open_warranty' order.pk %}" style="width:100%;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-full">Abrir servicio por garantía</button>
-              </form>
-            {% endif %}
-            {% if is_manager_user and order.status != "CANC" %}
-              <form method="post" action="{% url 'order_cancel' order.pk %}" style="width:100%;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-danger btn-full">Marcar como cancelado</button>
-              </form>
-            {% endif %}
-          </div>
-        </div>
-        <div class="card order-card">
-          <h2>Cliente y equipo</h2>
-          <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
-          <p class="muted">Tel: {{ order_customer.phone|default:"-" }}{% if order_customer.alt_phone %} / {{ order_customer.alt_phone }}{% endif %} &middot; Email: {{ order_customer.email|default:"-" }}</p>
-          <div style="margin-top:8px;">
-            <strong>Dispositivos:</strong>
-            {% if order_devices %}
-              <ul style="padding-left:18px;margin:8px 0;">
-                {% for device in order_devices %}
-                  <li>
-                    {{ device.brand }} {{ device.model }}
-                    {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
-                  </li>
-                {% endfor %}
-              </ul>
+
+          {% if has_open_warranty_children %}
+            {% if is_delivered %}
+              <div class="alert-warning">Esta orden ya fue entregada y tiene servicios de garantia abiertos.</div>
             {% else %}
-              <p class="muted">(sin dispositivos asociados)</p>
+              <div class="alert-warning">Hay servicios de garantia abiertos; cierra o actualiza esas ordenes antes de entregar.</div>
             {% endif %}
-          </div>
-          {% if order_customer %}
-            <a class="btn btn-ghost" style="margin-top:10px;" href="{% url 'customer_devices' order_customer.id %}" target="_blank" rel="noopener">
-              Ver todos los dispositivos del cliente
-            </a>
-            <a class="btn" style="margin-top:8px;" href="{% url 'customer_edit' order_customer.id %}?next={{ request.path }}">
-              Editar datos del cliente
-            </a>
           {% endif %}
+
+          <div class="card-actions">
+
+            <a class="btn btn-full" href="{{ public_url }}" target="_blank">Estado p&#250;blico</a>
+
+            <a class="btn btn-ghost btn-full" href="{% url "order_ticket" order.pk %}" target="_blank">Ticket</a>
+
+            {% if wa_link %}<a class="btn btn-whatsapp btn-full" href="{{ wa_link }}" target="_blank">WhatsApp</a>{% endif %}
+
+            <a class="btn btn-ghost btn-full" href="{% url "order_attachments" order.pk %}">Adjuntos</a>
+
+            {% if order.status == "DONE" %}
+
+              <form method="post" action="{% url "order_open_warranty" order.pk %}" style="width:100%;" data-confirm-message="Abriras un servicio por garantia a partir de esta orden entregada.">
+
+                {% csrf_token %}
+
+                <button type="submit" class="btn btn-ghost btn-full">Abrir servicio por garantia</button>
+
+              </form>
+
+            {% endif %}
+
+            {% if is_manager_user and order.status != "CANC" %}
+
+              <form method="post" action="{% url "order_cancel" order.pk %}" style="width:100%;" data-confirm-message="Cancelaras la orden. Confirma que el cliente esta enterado.">
+
+                {% csrf_token %}
+
+                <button type="submit" class="btn btn-danger btn-full">Marcar como cancelado</button>
+
+              </form>
+
+            {% endif %}
+
+          </div>
+
+          {% if is_manager_user and order.status == "DONE" or is_manager_user and order.status == "CANC" %}
+
+            <form method="post" action="{% url "order_reopen" order.pk %}" class="reopen-form" data-confirm-message="Reabriras la orden y la enviara a Revision.">
+
+              {% csrf_token %}
+
+              <label for="reopen_reason">Motivo de reapertura (solo interno)</label>
+
+              <input id="reopen_reason" type="text" name="reason" placeholder="Ej. el equipo regres&#243; con misma falla" required>
+
+              <button type="submit" class="btn btn-warning btn-full">Reabrir orden</button>
+
+            </form>
+
+          {% endif %}
+
         </div>
+
         <div class="card order-card">
-          <h2>Asignar técnico / Estado</h2>
+
+          <h2>Cliente y equipo</h2>
+
+          <p><strong>Cliente:</strong> {{ order_customer.name|default:"-" }}</p>
+
+          <p class="muted">Tel: {{ order_customer.phone|default:"-" }}{% if order_customer.alt_phone %} / {{ order_customer.alt_phone }}{% endif %} &middot; Email: {{ order_customer.email|default:"-" }}</p>
+
+          <div style="margin-top:8px;">
+
+            <strong>Dispositivos:</strong>
+
+            {% if order_devices %}
+
+              <ul style="padding-left:18px;margin:8px 0;">
+
+                {% for device in order_devices %}
+
+                  <li>
+
+                    {{ device.brand }} {{ device.model }}
+
+                    {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+
+                  </li>
+
+                {% endfor %}
+
+              </ul>
+
+            {% else %}
+
+              <p class="muted">(sin dispositivos asociados)</p>
+
+            {% endif %}
+
+          </div>
+
+          {% if order_customer %}
+
+            <a class="btn btn-ghost" style="margin-top:10px;" href="{% url 'customer_devices' order_customer.id %}" target="_blank" rel="noopener">
+
+              Ver todos los dispositivos del cliente
+
+            </a>
+
+            <a class="btn" style="margin-top:8px;" href="{% url 'customer_edit' order_customer.id %}?next={{ request.path }}">
+
+              Editar datos del cliente
+
+            </a>
+
+          {% endif %}
+
+        </div>
+
+        {% if is_final %}
+        <div class="card order-card">
+          <h2>Asignar t&#233;cnico / Estado</h2>
+          <p class="muted">Orden cerrada ({{ order.get_status_display }}).</p>
+          <p class="muted">Usa "Reabrir orden" si necesitas moverla a un estado de trabajo.</p>
+        </div>
+        {% else %}
+        <div class="card order-card">
+          <h2>Asignar t&#233;cnico / Estado</h2>
           {% if can_assign %}
             <form method="post" action="{% url 'assign_tech' order.pk %}" class="inline" style="margin-top:8px;">
               {% csrf_token %}
               <select name="user_id" required style="padding:8px;border:1px solid #cbd5f5;border-radius:8px;">
-                <option value="">- Selecciona técnico -</option>
+                <option value="">- Selecciona t&#233;cnico -</option>
                 {% for u in staff_users %}
                   <option value="{{ u.id }}" {% if order.assigned_to and order.assigned_to.id == u.id %}selected{% endif %}>{{ u.get_username }}</option>
                 {% endfor %}
@@ -197,21 +429,20 @@
               <button type="submit">Asignar</button>
             </form>
           {% endif %}
-
           <div style="margin-top:16px;">
             <h3 style="margin:0 0 8px;color:#1d4ed8;font-size:16px;">Cambiar estado</h3>
             {% if allowed_next %}
               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
                 {% for code,label in status_choices %}
                   {% if code in allowed_next %}
-                    {% if code != 'DONE' or is_superuser %}
+                    {% if code != 'DONE' or can_mark_done %}
                       {% if code == 'AUTH' %}
-                        <form method="post" action="{% url 'change_status_auth' order.pk %}">
+                        <form method="post" action="{% url 'change_status_auth' order.pk %}" data-status-code="{{ code }}" data-status-label="{{ label }}">
                           {% csrf_token %}
                           <button type="submit" class="btn btn-ghost">{{ label }}</button>
                         </form>
                       {% else %}
-                        <form method="post" action="{% url 'change_status' order.pk %}">
+                        <form method="post" action="{% url 'change_status' order.pk %}" data-status-code="{{ code }}" data-status-label="{{ label }}">
                           {% csrf_token %}
                           <input type="hidden" name="target" value="{{ code }}">
                           <button type="submit" class="btn btn-ghost">{{ label }}</button>
@@ -226,182 +457,395 @@
             {% endif %}
           </div>
         </div>
+        {% endif %}
+
       </section>
 
+
+
       <section class="order-row order-row-middle">
-        <div class="card order-card" style="text-align:left;">
+
+        <div class="card order-card equipment-card" style="text-align:left;">
+
           <h2>Equipos y fallas</h2>
+
           {% if order_devices %}
+
             <div class="order-devices-list">
+
               {% for device in order_devices %}
+
                 <div class="order-device-card">
+
                   <p class="device-name">
+
                     <strong>{{ device.brand }} {{ device.model }}</strong>
+
                     {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
+
                   </p>
-                  <p class="device-failure-label">Falla:</p>
-                  <p class="device-failure-text">
+
+                  <p class="device-detail">
+                    <span class="device-label">Falla:</span>
                     {% if device.notes %}
                       {{ device.notes }}
                     {% else %}
-                      <span class="muted">Sin descripción capturada.</span>
+                      <span class="muted">Sin descripci&#243;n capturada.</span>
                     {% endif %}
                   </p>
+
                   {% if device.password_notes %}
-                    <p class="device-extra">
-                      <strong>Contraseña / PIN:</strong> {{ device.password_notes }}
+                    <p class="device-detail">
+                      <span class="device-label">Contrase&#241;a / PIN:</span>
+                      {{ device.password_notes }}
                     </p>
                   {% endif %}
+
                   {% if device.accessories_notes %}
-                    <p class="device-extra">
-                      <strong>Accesorios:</strong> {{ device.accessories_notes }}
+                    <p class="device-detail">
+                      <span class="device-label">Accesorios:</span>
+                      {{ device.accessories_notes }}
                     </p>
                   {% endif %}
+
                 </div>
+
               {% endfor %}
+
             </div>
+
           {% else %}
+
             <p class="muted">(sin dispositivos asociados)</p>
+
           {% endif %}
+
         </div>
+
         <div class="card order-card">
-          <h2>Cotización</h2>
+
+          <h2>Cotizaci&#243;n</h2>
+
           <p><strong>Estado:</strong> {{ estimate_status }}</p>
+
           {% if estimate %}
+
             <p>Subtotal: ${{ estimate.subtotal|floatformat:2 }}</p>
+
             <p>IVA: ${{ estimate.tax|floatformat:2 }}</p>
+
             <p>Total: ${{ estimate.total|floatformat:2 }}</p>
+
             {% if estimate.note %}<p class="muted">Nota: {{ estimate.note }}</p>{% endif %}
-            <p class="muted">IVA aplicado: {% if estimate.apply_tax %}Sí{% else %}No{% endif %}</p>
+
+            <p class="muted">IVA aplicado: {% if estimate.apply_tax %}S&#237;{% else %}No{% endif %}</p>
+
           {% else %}
-            <p class="muted">(sin cotización)</p>
+
+            <p class="muted">(sin cotizaci&#243;n)</p>
+
           {% endif %}
+
           <div class="quote-actions">
+
             <a class="btn btn-full btn-block" href="{% url 'estimate_edit' order.pk %}">Editar</a>
             {% if estimate_public_url %}
-              <a class="btn btn-ghost btn-full btn-block" href="{{ estimate_public_url }}" target="_blank">Ver público</a>
+              <a class="btn btn-ghost btn-full btn-block" href="{{ estimate_public_url }}" target="_blank">Ver p&#250;blico</a>
             {% endif %}
             {% if estimate_has_items and can_send_estimate %}
+
               <div class="quote-send-row">
+
                 <form method="post" action="{% url 'estimate_send' order.pk %}">
+
                   {% csrf_token %}
+
                   <button type="submit" class="btn btn-ghost btn-block btn-send">Enviar por correo</button>
+
                 </form>
+
                 <form method="post" action="{% url 'estimate_send_whatsapp' order.pk %}">
+
                   {% csrf_token %}
+
                   <button type="submit" class="btn btn-whatsapp btn-block btn-send">Enviar por WhatsApp</button>
+
                 </form>
+
               </div>
+
             {% endif %}
+
           </div>
+
         </div>
+
       </section>
+
+
 
       <section class="order-row order-row-lower">
+
         <div class="card" style="margin-bottom:0;">
+
           <h2>Pagos</h2>
+
           {% if can_charge %}
+
             <form method="post" action="{% url 'add_payment' order.pk %}" class="inline">
+
               {% csrf_token %}
+
               <input type="number" name="amount" step="0.01" min="0.01" placeholder="Monto" required>
-              <input type="text" name="method" maxlength="30" placeholder="Método" required>
+
+              <input type="text" name="method" maxlength="30" placeholder="M&#233;todo" required>
+
               <input type="text" name="reference" maxlength="80" placeholder="Referencia">
+
               <select name="device_id">
+
                 <option value="">Aplica a la orden completa</option>
+
                 {% for device in order_devices %}
+
                   <option value="{{ device.id }}">{{ device.brand }} {{ device.model }}{% if device.serial %} ({{ device.serial }}){% endif %}</option>
+
                 {% endfor %}
+
               </select>
+
               <button type="submit">Registrar pago</button>
+
             </form>
+
           {% endif %}
+
           <div style="margin-top:12px;overflow-x:auto;">
+
             <table>
-              <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Dispositivo</th></tr></thead>
+
+              <thead><tr><th>Fecha</th><th>Monto</th><th>M&#233;todo</th><th>Referencia</th><th>Dispositivo</th></tr></thead>
+
               <tbody>
+
                 {% for p in payments %}
+
                   <tr>
+
                     <td>{{ p.created_at|date:"Y-m-d H:i" }}</td>
+
                     <td>${{ p.amount|floatformat:2 }}</td>
+
                     <td>{{ p.method|default:"-" }}</td>
+
                     <td>{{ p.reference|default:"-" }}</td>
+
                     <td>
+
                       {% if p.device %}
+
                         {{ p.device.brand }} {{ p.device.model }}
+
                         {% if p.device.serial %}<div class="muted">Serie: {{ p.device.serial }}</div>{% endif %}
+
                       {% else %}
+
                         <span class="muted">Orden completa</span>
+
                       {% endif %}
+
                     </td>
+
                   </tr>
+
                 {% empty %}
+
                   <tr><td colspan="5" style="text-align:center;padding:18px;">Sin pagos registrados.</td></tr>
+
                 {% endfor %}
+
               </tbody>
+
             </table>
+
           </div>
+
         </div>
+
         <div class="card" style="margin-bottom:0;">
+
           <h2>Notas internas</h2>
+
           <pre style="white-space:pre-wrap;font-family:inherit;background:#f8fbff;border:1px solid #dbeafe;border-radius:10px;padding:12px;">{{ order.notes|default:"(sin notas)" }}</pre>
+
           <form method="post" action="{% url 'add_note' order.pk %}" class="inline" style="margin-top:10px;">
+
             {% csrf_token %}
+
             <textarea name="note" rows="3" placeholder="Agregar nota..." required></textarea>
+
             <button type="submit">Guardar nota</button>
+
           </form>
+
         </div>
+
       </section>
 
+
+
       <section class="order-row order-row-bottom">
+
         <div class="card" style="overflow-x:auto;">
+
           <h2>Refacciones usadas</h2>
+
           <form method="post" action="{% url 'add_part' order.pk %}" class="inline">
+
             {% csrf_token %}
+
             <input name="sku" placeholder="SKU" required>
+
             <input name="qty" type="number" min="1" value="1" required style="width:80px;">
+
             <input name="reason" placeholder="Motivo (opcional)">
+
             <button type="submit" class="btn btn-ghost">Registrar</button>
+
           </form>
+
           <div class="table-wrapper">
+
           <table style="margin-top:12px;">
+
             <thead><tr><th>Fecha</th><th>SKU</th><th>Nombre</th><th>Cantidad</th><th>Motivo</th></tr></thead>
+
             <tbody>
+
               {% for m in parts %}
+
                 <tr>
+
                   <td class="muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
+
                   <td>{{ m.item.sku }}</td>
+
                   <td>{{ m.item.name }}</td>
+
                   <td>{{ m.delta }}</td>
+
                   <td>{{ m.reason|default:"-" }}</td>
+
                 </tr>
+
               {% empty %}
+
                 <tr><td colspan="5" style="text-align:center;padding:18px;">Sin consumos registrados.</td></tr>
+
               {% endfor %}
+
             </tbody>
+
           </table>
+
           </div>
+
         </div>
+
         <div class="card" style="overflow-x:auto;">
+
           <h2>Historial</h2>
           <div class="table-wrapper">
           <table>
-            <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th><th>Nota</th></tr></thead>
             <tbody>
               {% for h in history %}
                 <tr>
                   <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
                   <td>{{ h.get_status_display }}</td>
                   <td>{{ h.author|default:"-" }}</td>
+                  <td>{{ h.note|default:"-" }}</td>
                 </tr>
               {% empty %}
-                <tr><td colspan="3" style="text-align:center;padding:18px;">Sin historial.</td></tr>
+                <tr><td colspan="4" style="text-align:center;padding:18px;">Sin historial.</td></tr>
               {% endfor %}
             </tbody>
           </table>
           </div>
         </div>
       </section>
+
     </div>
+
   </main>
+
+  <script>
+
+    (function(){
+
+      const warrantyOrder = {{ order.is_warranty|yesno:"true,false" }};
+
+      document.querySelectorAll('form[data-status-code]').forEach(function(form){
+
+        form.addEventListener('submit', function(ev){
+
+          const code = form.dataset.statusCode;
+
+          const label = form.dataset.statusLabel || code;
+
+          let message = null;
+
+          if (code === 'DONE') {
+
+            message = 'Vas a marcar la orden como ENTREGADA. Esto la mueve a un estado final.';
+
+            if (warrantyOrder) {
+
+              message += '\\nEs una orden de garantia. Asegura que el equipo realmente se entrega.';
+
+            }
+
+          } else if (code === 'CANC') {
+
+            message = 'Vas a cancelar la orden. Confirma que el cliente esta enterado.';
+
+          } else if (warrantyOrder) {
+
+            message = `Esta orden es de garantia. Confirma cambiar el estado a ${label}.`;
+
+          }
+
+          if (message && !window.confirm(message)) {
+
+            ev.preventDefault();
+
+          }
+
+        });
+
+      });
+
+      document.querySelectorAll('form[data-confirm-message]').forEach(function(form){
+
+        form.addEventListener('submit', function(ev){
+
+          const msg = form.dataset.confirmMessage;
+
+          if (msg && !window.confirm(msg)) {
+
+            ev.preventDefault();
+
+          }
+
+        });
+
+      });
+
+    })();
+
+  </script>
+
 </body>
+
 </html>
+

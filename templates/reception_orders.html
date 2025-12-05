@@ -77,7 +77,7 @@
           </label>
           <label>Estado
             <select name="status">
-              <option value="">Todos</option>
+              <option value="" {% if not status %}selected{% endif %}>Todos</option>
               {% for code,label in status_choices %}
                 <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}

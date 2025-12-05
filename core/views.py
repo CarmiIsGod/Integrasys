@@ -50,6 +50,7 @@ from .permissions import (
     is_gerencia,
     is_recepcion,
     is_tecnico,
+    can_mark_order_done,
     require_manager,
 )
 from .utils import (
@@ -589,7 +590,7 @@ def dashboard(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def inventory_list(request):
     q = (request.GET.get("q", "") or "").strip()
     low = request.GET.get("low") == "1"
@@ -609,7 +610,7 @@ def inventory_list(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def receive_stock(request):
     sku = (request.POST.get("sku") or "").strip()
@@ -646,7 +647,7 @@ def receive_stock(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def inventory_create(request):
     if request.method == "POST":
         form = InventoryItemForm(request.POST)
@@ -666,7 +667,7 @@ def inventory_create(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def inventory_update(request, pk):
     item = get_object_or_404(InventoryItem, pk=pk)
     if request.method == "POST":
@@ -710,7 +711,7 @@ def inventory_delete(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def customer_list(request):
     q = (request.GET.get("q", "") or "").strip()
     qs = Customer.objects.annotate(order_count=Count("orders", distinct=True)).order_by("name")
@@ -732,7 +733,7 @@ def customer_list(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def customer_edit(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     next_url = (request.GET.get("next") or "").strip()
@@ -754,7 +755,7 @@ def customer_edit(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def list_orders(request):
     q = (request.GET.get("q", "") or "").strip()
     status = (request.GET.get("status", "") or "").strip()
@@ -765,8 +766,9 @@ def list_orders(request):
     has_user_filters = any(
         key in request.GET for key in ("status", "q", "from", "to", "assignee", "export")
     )
+    # Por default mostramos todas las ordenes (sin filtro de estado).
     if not has_user_filters:
-        status = ServiceOrder.Status.NEW
+        status = ""
 
     is_superuser = request.user.is_superuser
     is_technician = is_tecnico(request.user)
@@ -782,8 +784,6 @@ def list_orders(request):
         .prefetch_related("devices")
         .order_by("-checkin_at")
     )
-    if is_technician:
-        qs = qs.filter(assigned_to=request.user)
 
     if q:
         qs = qs.filter(
@@ -872,7 +872,6 @@ def list_orders(request):
     paginator = Paginator(qs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
 
-    restricted_statuses = {"REV", "WAI", "READY"}
     status_colors = {
         ServiceOrder.Status.NEW: "#3B82F6",
         ServiceOrder.Status.IN_REVIEW: "#FACC15",
@@ -883,10 +882,7 @@ def list_orders(request):
         ServiceOrder.Status.CANCELLED: "#9ca3af",
     }
     for o in page_obj.object_list:
-        allowed_next = o.allowed_next_statuses()
-        if is_technician:
-            allowed_next = [code for code in allowed_next if code in restricted_statuses]
-        o.allowed_next = allowed_next
+        o.allowed_next = o.allowed_next_statuses_for_user(request.user)
         public_url = request.build_absolute_uri(reverse("public_status", args=[o.token]))
         customer = o.get_customer()
         customer_name = getattr(customer, "name", "") if customer else ""
@@ -927,7 +923,7 @@ def list_orders(request):
     return render(request, "reception_orders.html", context)
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def order_detail(request, pk):
     order = get_object_or_404(
         ServiceOrder.objects.select_related("customer").prefetch_related("devices"),
@@ -935,15 +931,14 @@ def order_detail(request, pk):
     )
     history = order.history.order_by("-created_at")
     parts = InventoryMovement.objects.filter(order=order).select_related("item").order_by("-created_at")
-    allowed_next = order.allowed_next_statuses()
+    allowed_next = order.allowed_next_statuses_for_user(request.user)
+    is_final = order.status in {ServiceOrder.Status.DELIVERED, ServiceOrder.Status.CANCELLED}
+    is_delivered = order.status == ServiceOrder.Status.DELIVERED
 
     is_superuser = request.user.is_superuser
     is_technician = is_tecnico(request.user)
     is_reception = is_recepcion(request.user)
     is_manager_user = is_gerencia(request.user) or is_superuser
-
-    if is_technician:
-        allowed_next = [code for code in allowed_next if code in {"REV", "WAI", "READY"}]
 
     status_colors = {
         ServiceOrder.Status.NEW: "#3B82F6",
@@ -1014,16 +1009,20 @@ def order_detail(request, pk):
             "can_charge": can_charge,
             "is_technician": is_technician,
             "is_superuser": is_superuser,
-            "is_manager_user": is_manager_user,
-            "order_customer": customer,
-            "order_devices": order_devices,
-            "status_colors": status_colors,
-        },
-    )
+        "is_manager_user": is_manager_user,
+        "order_customer": customer,
+        "order_devices": order_devices,
+        "status_colors": status_colors,
+        "has_open_warranty_children": order.has_open_warranty_children,
+        "is_final": is_final,
+        "is_delivered": is_delivered,
+        "can_mark_done": can_mark_order_done(request.user),
+    },
+)
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def order_open_warranty(request, pk):
     parent = get_object_or_404(ServiceOrder.objects.prefetch_related("devices"), pk=pk)
@@ -1060,7 +1059,39 @@ def order_cancel(request, pk):
     return redirect("order_detail", pk=pk)
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@require_manager
+@require_POST
+def order_reopen(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    reason = (request.POST.get("reason") or "").strip()
+    if order.status not in ServiceOrder.FINAL_STATUSES:
+        messages.error(request, "Solo se pueden reabrir ordenes entregadas o canceladas.")
+        return redirect("order_detail", pk=pk)
+    if not reason:
+        messages.error(request, "Captura el motivo de la reapertura.")
+        return redirect("order_detail", pk=pk)
+    try:
+        order.reopen(author=request.user, author_role=resolve_actor_role(request.user), reason=reason)
+        # Guarda el motivo en notas internas para dejar rastro visible
+        try:
+            stamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            stamp = timezone.now().strftime("%Y-%m-%d %H:%M")
+        user_label = getattr(request.user, "get_username", lambda: "")() or getattr(request.user, "username", "") or "usuario"
+        reopen_line = f"[{stamp}] Reapertura por {user_label}: {reason}"
+        current_notes = order.notes or ""
+        if current_notes:
+            order.notes = f"{current_notes}\n{reopen_line}"
+        else:
+            order.notes = reopen_line
+        order.save(update_fields=["notes"])
+        messages.success(request, "Orden reabierta y regresada a Revision.")
+    except Exception as exc:
+        messages.error(request, f"No se pudo reabrir la orden: {exc}")
+    return redirect("order_detail", pk=pk)
+
+@login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def add_payment(request, pk):
     order = get_object_or_404(
@@ -1134,7 +1165,7 @@ def add_payment(request, pk):
         Status = ServiceOrder.Status
         done_value = Status.DELIVERED
         try:
-            if new_balance == Decimal("0.00") and order.can_transition_to(done_value):
+            if new_balance == Decimal("0.00") and can_mark_order_done(request.user) and order.can_transition_to(done_value, user=request.user):
                 actor_role = resolve_actor_role(request.user)
                 order.transition_to(done_value, author=request.user, author_role=actor_role)
                 _record_status_update(
@@ -1218,7 +1249,7 @@ def add_payment(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def change_status_auth(request, pk):
     order = get_object_or_404(
@@ -1227,8 +1258,9 @@ def change_status_auth(request, pk):
     )
 
     target_status = ServiceOrder.Status.REQUIRES_AUTH
-    if not order.can_transition_to(target_status):
-        messages.error(request, "Transicion de estado invalida.")
+    ok, error = order.validate_transition(target_status, user=request.user)
+    if not ok:
+        messages.error(request, error or "Transicion de estado invalida.")
         return redirect("order_detail", pk=order.pk)
 
     if is_tecnico(request.user):
@@ -1300,7 +1332,7 @@ def change_status_auth(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_TECNICO, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_TECNICO, ROLE_GERENCIA)
 @require_POST
 def change_status(request, pk):
     order = get_object_or_404(
@@ -1313,34 +1345,18 @@ def change_status(request, pk):
     customer_name = getattr(customer, "name", "") if customer else ""
     order_folio = _resolve_order_folio(order)
 
-    if not order.can_transition_to(target):
-        messages.error(request, "Transicion de estado invalida.")
-        return redirect("order_detail", pk=order.pk)
-
     if target == ServiceOrder.Status.REQUIRES_AUTH:
         messages.error(request, "Usa el flujo de autorizacion dedicado.")
         return redirect("order_detail", pk=order.pk)
 
-    if is_tecnico(request.user):
-        if order.assigned_to_id != request.user.id:
-            messages.error(request, "Solo puedes actualizar tus ordenes asignadas.")
-            return redirect("order_detail", pk=order.pk)
-        if target not in {"REV", "WAI", "READY"}:
-            messages.error(request, "Los tecnicos solo pueden cambiar a REV, WAI o READY.")
-            return redirect("order_detail", pk=order.pk)
-
-    if target == "DONE" and not request.user.is_superuser:
-        messages.error(request, "Solo un superusuario puede marcar como Entregado.")
+    if target == ServiceOrder.Status.DELIVERED and not can_mark_order_done(request.user):
+        messages.error(request, "No tienes permisos para marcar la orden como entregada.")
         return redirect("order_detail", pk=order.pk)
 
-    if target == "DONE" and hasattr(order, "balance"):
-        balance_value = order.balance
-        if balance_value is not None and balance_value > Decimal("0.00"):
-            messages.error(
-                request,
-                f"No puedes entregar con saldo pendiente (${balance_value:.2f}).",
-            )
-            return redirect("order_detail", pk=order.pk)
+    ok, error = order.validate_transition(target, user=request.user)
+    if not ok:
+        messages.error(request, error or "Transicion de estado invalida.")
+        return redirect("order_detail", pk=order.pk)
 
     if target == ServiceOrder.Status.READY_PICKUP:
         applied_ok, apply_error = apply_estimate_inventory(order, author=request.user)
@@ -1405,7 +1421,7 @@ def change_status(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def payment_receipt_pdf(request, payment_id):
     payment = get_object_or_404(
         Payment.objects.select_related("order__customer", "author", "device").prefetch_related("order__devices"),
@@ -1563,7 +1579,7 @@ def add_part(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def customer_devices(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     if request.method == "POST":
@@ -1593,7 +1609,7 @@ def customer_devices(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def reception_home(request):
     counts = {code: 0 for code, _ in ServiceOrder.Status.choices}
     for entry in (
@@ -1642,7 +1658,7 @@ def reception_home(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def reception_customer_search(request):
     query = (request.GET.get("q") or "").strip()
     if not query:
@@ -1681,7 +1697,7 @@ def reception_customer_search(request):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def reception_new_order(request):
     prefill = {"name": "", "phone": "", "alt_phone": "", "email": "", "notes": "", "customer_id": ""}
     form = ReceptionForm()
@@ -1872,7 +1888,7 @@ def reception_new_order(request):
     context = {"prefill": prefill, "form": form, "device_formset": device_formset}
     return render(request, "reception/new_order.html", context)
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 def estimate_edit(request, pk):
     order = get_object_or_404(ServiceOrder, pk=pk)
     estimate, _ = Estimate.objects.get_or_create(order=order)
@@ -2024,7 +2040,7 @@ def estimate_edit(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def estimate_send(request, pk):
     order = get_object_or_404(
@@ -2103,7 +2119,7 @@ def estimate_send(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA, ROLE_TECNICO)
 @require_POST
 def estimate_send_whatsapp(request, pk):
     order = get_object_or_404(

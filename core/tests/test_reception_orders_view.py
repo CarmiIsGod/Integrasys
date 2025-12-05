@@ -24,19 +24,24 @@ class ReceptionOrdersViewTests(TestCase):
             status=status,
         )
 
-    def test_defaults_to_new_status_filter(self):
+    def test_defaults_to_all_statuses(self):
         new_order = self._order(ServiceOrder.Status.NEW)
-        self._order(ServiceOrder.Status.READY_PICKUP)
+        ready_order = self._order(ServiceOrder.Status.READY_PICKUP)
 
         url = reverse("list_orders")
         resp = self.client.get(url)
 
         self.assertEqual(resp.status_code, 200)
         page_obj = resp.context["page_obj"]
-        self.assertTrue(all(o.status == ServiceOrder.Status.NEW for o in page_obj.object_list))
-        self.assertEqual(resp.context.get("status"), ServiceOrder.Status.NEW)
+        orders = list(page_obj.object_list)
+        # Sin filtro de estado, deben venir todas las ordenes creadas.
+        self.assertCountEqual(orders, ServiceOrder.objects.all())
+        # El filtro de estado en contexto debe reflejar "todos" (vacío/None).
+        self.assertFalse(resp.context.get("status"))
         html = resp.content.decode()
+        # Debe mostrar badges para los distintos estados presentes.
         self.assertIn("badge-status-NEW", html)
+        self.assertIn("badge-status-READY", html)
 
     def test_respects_explicit_status_filter(self):
         self._order(ServiceOrder.Status.NEW)

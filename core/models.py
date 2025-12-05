@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import uuid
 import re
 
+import logging
 
 
 from django.conf import settings
@@ -22,6 +23,7 @@ from django.dispatch import receiver
 
 
 IVA_RATE = Decimal("0.16")
+logger = logging.getLogger(__name__)
 
 class Customer(models.Model):
     name = models.CharField(max_length=120, db_index=True)
@@ -92,6 +94,8 @@ class ServiceOrder(models.Model):
         Status.DELIVERED: (Status.CANCELLED,),
         Status.CANCELLED: (),
     }
+    FINAL_STATUSES = {Status.DELIVERED, Status.CANCELLED}
+    TECHNICIAN_ALLOWED_TARGETS = {Status.IN_REVIEW, Status.WAITING_PARTS, Status.READY_PICKUP}
 
     customer = models.ForeignKey(
         Customer,
@@ -208,15 +212,102 @@ class ServiceOrder(models.Model):
     def allowed_next_statuses(self):
         return list(self.STATUS_TRANSITIONS.get(self.status, ()))
 
-    def can_transition_to(self, new_status):
-        return new_status in self.allowed_next_statuses()
+    def allowed_next_statuses_for_user(self, user):
+        """Return allowed transitions filtered by role restrictions to avoid exposing invalid buttons."""
+        allowed = self.allowed_next_statuses()
+        roles = self._resolve_role_flags(user)
+        user_id = getattr(user, "id", None)
+        if roles["is_tecnico"] and self.assigned_to_id and self.assigned_to_id != user_id:
+            return []
+        filtered = []
+        try:
+            from core.permissions import can_mark_order_done  # local import to avoid circular at module load
+        except Exception:
+            can_mark_order_done = lambda _u: False  # type: ignore
+        for code in allowed:
+            if roles["is_tecnico"] and code not in self.TECHNICIAN_ALLOWED_TARGETS:
+                continue
+            if code in self.FINAL_STATUSES and not (can_mark_order_done(user) or roles["is_superuser"] or roles["is_manager"] or roles["is_recepcion"]):
+                continue
+            filtered.append(code)
+        return filtered
 
-    def transition_to(self, new_status, *, author=None, author_role="", force=False):
+    @staticmethod
+    def _resolve_role_flags(user):
+        flags = {
+            "is_authenticated": False,
+            "is_superuser": False,
+            "is_manager": False,
+            "is_recepcion": False,
+            "is_tecnico": False,
+        }
+        if not user or not getattr(user, "is_authenticated", False):
+            return flags
+        flags["is_authenticated"] = True
+        flags["is_superuser"] = getattr(user, "is_superuser", False)
+        if flags["is_superuser"]:
+            flags["is_manager"] = True
+            return flags
+        try:
+            from core.permissions import is_gerencia, is_recepcion, is_tecnico
+
+            flags["is_manager"] = is_gerencia(user)
+            flags["is_recepcion"] = is_recepcion(user)
+            flags["is_tecnico"] = is_tecnico(user)
+        except Exception:
+            pass
+        return flags
+
+    @property
+    def has_open_warranty_children(self):
+        open_statuses = [code for code, _ in self.Status.choices if code not in self.FINAL_STATUSES]
+        try:
+            return self.warranty_children.filter(status__in=open_statuses).exists()
+        except Exception:
+            return False
+
+    def can_transition_to(self, new_status, *, user=None, allow_reopen=False, force=False):
+        ok, _ = self.validate_transition(new_status, user=user, allow_reopen=allow_reopen, force=force)
+        return ok
+
+    def validate_transition(self, new_status, *, user=None, allow_reopen=False, force=False):
+        target = str(new_status)
+        if not force:
+            allowed = self.allowed_next_statuses()
+            if not (allow_reopen and self.status in self.FINAL_STATUSES and target == self.Status.IN_REVIEW):
+                if target not in allowed:
+                    return False, f"Transicion no permitida de {self.status} a {target}"
+        roles = self._resolve_role_flags(user)
+        if roles["is_tecnico"]:
+            user_id = getattr(user, "id", None)
+            if self.assigned_to_id and self.assigned_to_id != user_id:
+                return False, "Solo el tecnico asignado puede mover la orden."
+            if target not in self.TECHNICIAN_ALLOWED_TARGETS:
+                return False, "Los tecnicos solo pueden mover a Revision, Espera o Listo."
+        if target == self.Status.DELIVERED:
+            try:
+                from core.permissions import can_mark_order_done  # local import to avoid circular import
+                if not can_mark_order_done(user):
+                    return False, "No tienes permisos para marcar como entregado."
+            except Exception:
+                return False, "No tienes permisos para marcar como entregado."
+            balance_value = getattr(self, "balance", None)
+            if balance_value is not None and balance_value > Decimal("0.00"):
+                return False, "No puedes entregar con saldo pendiente."
+            if self.has_open_warranty_children:
+                return False, "No puedes entregar mientras existan garantias abiertas."
+        if target == self.Status.CANCELLED and not force:
+            if not (roles["is_superuser"] or roles["is_manager"]):
+                return False, "Solo gerencia o superusuario puede cancelar."
+        return True, None
+
+    def transition_to(self, new_status, *, author=None, author_role="", force=False, reason=None, allow_reopen=False):
+        ok, error = self.validate_transition(new_status, user=author, allow_reopen=allow_reopen, force=force)
+        if not ok:
+            raise ValueError(error or f"Transicion no permitida de {self.status} a {new_status}")
         previous_status = self.status
         if not force and previous_status == new_status:
             return previous_status
-        if not force and new_status not in self.allowed_next_statuses():
-            raise ValueError(f"Transicion no permitida de {previous_status} a {new_status}")
         update_fields = ["status"]
         self.status = new_status
         if new_status == ServiceOrder.Status.DELIVERED and not self.checkout_at:
@@ -230,8 +321,42 @@ class ServiceOrder(models.Model):
             to_status=new_status,
             author=author,
             author_role=author_role or "",
+            note=reason or "",
         )
+        if new_status == ServiceOrder.Status.DELIVERED:
+            try:
+                author_username = ""
+                if author is not None:
+                    author_username = getattr(author, "get_username", lambda: "")() or getattr(author, "username", "") or ""
+                logger.info(
+                    "order_marked_done order=%s folio=%s from=%s warranty=%s user=%s role=%s force=%s allow_reopen=%s",
+                    self.pk,
+                    getattr(self, "folio", ""),
+                    previous_status,
+                    self.is_warranty,
+                    author_username,
+                    author_role,
+                    force,
+                    allow_reopen,
+                )
+            except Exception:
+                logger.exception("No se pudo registrar log de orden entregada")
         return previous_status
+
+    def reopen(self, *, author=None, author_role="", reason=""):
+        reason_value = (reason or "").strip()
+        if self.status not in self.FINAL_STATUSES:
+            raise ValueError("Solo se pueden reabrir ordenes finalizadas.")
+        if not reason_value:
+            raise ValueError("Debes capturar el motivo de la reapertura.")
+        return self.transition_to(
+            self.Status.IN_REVIEW,
+            author=author,
+            author_role=author_role,
+            force=True,
+            reason=f"Reapertura: {reason_value}",
+            allow_reopen=True,
+        )
 
 
     @staticmethod
@@ -293,10 +418,11 @@ class StatusHistory(models.Model):
     status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices, db_index=True)
     author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
     author_role = models.CharField(max_length=20, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     @classmethod
-    def log(cls, order, *, from_status="", to_status=None, author=None, author_role=""):
+    def log(cls, order, *, from_status="", to_status=None, author=None, author_role="", note=""):
         target_status = to_status or getattr(order, "status", "")
         return cls.objects.create(
             order=order,
@@ -304,6 +430,7 @@ class StatusHistory(models.Model):
             status=target_status,
             author=author,
             author_role=author_role or "",
+            note=note or "",
         )
 
 

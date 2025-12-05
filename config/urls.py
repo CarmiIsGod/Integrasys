@@ -43,6 +43,7 @@ urlpatterns = [
     path("recepcion/ordenes/<int:pk>/part/", views.add_part, name="add_part"),
     path("recepcion/ordenes/<int:pk>/garantia/", views.order_open_warranty, name="order_open_warranty"),
     path("recepcion/ordenes/<int:pk>/cancelar/", views.order_cancel, name="order_cancel"),
+    path("recepcion/ordenes/<int:pk>/reabrir/", views.order_reopen, name="order_reopen"),
     path("recepcion/ordenes/<int:pk>/nota/", views.add_note, name="add_note"),
     path("recepcion/ordenes/<int:pk>/assign/", views.assign_tech, name="assign_tech"),
     path("clientes/<int:pk>/dispositivos/", core_views.customer_devices, name="customer_devices"),
