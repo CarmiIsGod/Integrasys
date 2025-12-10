@@ -32,8 +32,8 @@ class DeviceAdmin(admin.ModelAdmin):
 class StatusHistoryInline(admin.TabularInline):
     model = StatusHistory
     extra = 0
-    fields = ("from_status", "status", "author", "author_role", "created_at")
-    readonly_fields = ("from_status", "status", "author", "author_role", "created_at")
+    fields = ("from_status", "status", "note", "author", "author_role", "created_at")
+    readonly_fields = ("from_status", "status", "note", "author", "author_role", "created_at")
 
 
 def export_orders_csv(modeladmin, request, queryset):

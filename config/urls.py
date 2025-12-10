@@ -40,6 +40,7 @@ urlpatterns = [
     path("recepcion/ordenes/p/<int:payment_id>/recibo.pdf", views.payment_receipt_pdf, name="payment_receipt_pdf"),
     path("recepcion/ordenes/<int:pk>/status/", views.change_status, name="change_status"),
     path("recepcion/ordenes/<int:pk>/status/auth/", views.change_status_auth, name="change_status_auth"),
+    path("recepcion/ordenes/<int:pk>/reabrir/", views.order_reopen, name="order_reopen"),
     path("recepcion/ordenes/<int:pk>/part/", views.add_part, name="add_part"),
     path("recepcion/ordenes/<int:pk>/garantia/", views.order_open_warranty, name="order_open_warranty"),
     path("recepcion/ordenes/<int:pk>/cancelar/", views.order_cancel, name="order_cancel"),

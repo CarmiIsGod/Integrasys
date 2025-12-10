@@ -192,6 +192,14 @@ def _record_status_update(order, *, channel="status_change", ok=True, extra_payl
         logger.exception("Error registrando notificacion de estado")
 
 
+def can_mark_order_done(user, order=None):
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    return is_recepcion(user)
+
+
 def _create_customer(name, phone, email, alt_phone=""):
     return Customer.objects.create(
         name=name,
@@ -1048,6 +1056,48 @@ def order_open_warranty(request, pk):
 
 
 @login_required(login_url="/admin/login/")
+@group_required(ROLE_RECEPCION, ROLE_GERENCIA)
+@require_POST
+def order_reopen(request, pk):
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    if order.status != ServiceOrder.Status.DELIVERED:
+        messages.error(request, "Solo puedes reabrir ordenes entregadas.")
+        return redirect("order_detail", pk=order.pk)
+
+    reason = (request.POST.get("reason") or "").strip()
+    if not reason:
+        messages.error(request, "Indica un motivo para reabrir la orden.")
+        return redirect("order_detail", pk=order.pk)
+
+    actor_role = resolve_actor_role(request.user)
+    note_text = f"Reapertura: {reason}"
+    try:
+        order.transition_to(
+            ServiceOrder.Status.IN_REVIEW,
+            author=request.user,
+            author_role=actor_role,
+            force=True,
+            note=note_text,
+        )
+    except Exception:
+        logger.exception("Error reabriendo orden")
+        messages.error(request, "No se pudo reabrir la orden.")
+        return redirect("order_detail", pk=order.pk)
+
+    try:
+        existing_notes = order.notes or ""
+        updated_notes = f"{existing_notes}\n{note_text}" if existing_notes else note_text
+        if updated_notes != existing_notes:
+            order.notes = updated_notes
+            order.save(update_fields=["notes"])
+    except Exception:
+        logger.exception("No se pudo guardar la nota de reapertura")
+
+    messages.success(request, "Orden reabierta para seguimiento.")
+    return redirect("order_detail", pk=order.pk)
+
+
+@login_required(login_url="/admin/login/")
 @require_manager
 @require_POST
 def order_cancel(request, pk):
@@ -1134,9 +1184,18 @@ def add_payment(request, pk):
         Status = ServiceOrder.Status
         done_value = Status.DELIVERED
         try:
-            if new_balance == Decimal("0.00") and order.can_transition_to(done_value):
+            if (
+                new_balance == Decimal("0.00")
+                and order.can_transition_to(done_value)
+                and can_mark_order_done(request.user, order)
+            ):
                 actor_role = resolve_actor_role(request.user)
-                order.transition_to(done_value, author=request.user, author_role=actor_role)
+                order.transition_to(
+                    done_value,
+                    author=request.user,
+                    author_role=actor_role,
+                    note="Cierre automatico tras dejar saldo en cero",
+                )
                 _record_status_update(
                     order,
                     channel="status_auto_close",
@@ -1300,7 +1359,7 @@ def change_status_auth(request, pk):
 
 
 @login_required(login_url="/admin/login/")
-@group_required(ROLE_TECNICO, ROLE_GERENCIA)
+@group_required(ROLE_TECNICO, ROLE_GERENCIA, ROLE_RECEPCION)
 @require_POST
 def change_status(request, pk):
     order = get_object_or_404(
@@ -1329,11 +1388,18 @@ def change_status(request, pk):
             messages.error(request, "Los tecnicos solo pueden cambiar a REV, WAI o READY.")
             return redirect("order_detail", pk=order.pk)
 
-    if target == "DONE" and not request.user.is_superuser:
-        messages.error(request, "Solo un superusuario puede marcar como Entregado.")
-        return redirect("order_detail", pk=order.pk)
+    if target == ServiceOrder.Status.DELIVERED:
+        has_open_warranty = order.warranty_children.exclude(
+            status__in=[ServiceOrder.Status.DELIVERED, ServiceOrder.Status.CANCELLED]
+        ).exists()
+        if has_open_warranty:
+            messages.error(request, "No puedes entregar mientras existan garantias abiertas.")
+            return redirect("order_detail", pk=order.pk)
+        if not can_mark_order_done(request.user, order):
+            messages.error(request, "No tienes permiso para marcar como Entregado.")
+            return redirect("order_detail", pk=order.pk)
 
-    if target == "DONE" and hasattr(order, "balance"):
+    if target == ServiceOrder.Status.DELIVERED and hasattr(order, "balance"):
         balance_value = order.balance
         if balance_value is not None and balance_value > Decimal("0.00"):
             messages.error(

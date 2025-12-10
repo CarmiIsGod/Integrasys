@@ -211,7 +211,7 @@ class ServiceOrder(models.Model):
     def can_transition_to(self, new_status):
         return new_status in self.allowed_next_statuses()
 
-    def transition_to(self, new_status, *, author=None, author_role="", force=False):
+    def transition_to(self, new_status, *, author=None, author_role="", force=False, note=None):
         previous_status = self.status
         if not force and previous_status == new_status:
             return previous_status
@@ -230,6 +230,7 @@ class ServiceOrder(models.Model):
             to_status=new_status,
             author=author,
             author_role=author_role or "",
+            note=note or "",
         )
         return previous_status
 
@@ -293,10 +294,11 @@ class StatusHistory(models.Model):
     status = models.CharField(max_length=10, choices=ServiceOrder.Status.choices, db_index=True)
     author = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
     author_role = models.CharField(max_length=20, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     @classmethod
-    def log(cls, order, *, from_status="", to_status=None, author=None, author_role=""):
+    def log(cls, order, *, from_status="", to_status=None, author=None, author_role="", note=""):
         target_status = to_status or getattr(order, "status", "")
         return cls.objects.create(
             order=order,
@@ -304,6 +306,7 @@ class StatusHistory(models.Model):
             status=target_status,
             author=author,
             author_role=author_role or "",
+            note=note or "",
         )
 
 
