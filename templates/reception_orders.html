@@ -41,6 +41,9 @@
     .badge-status-DONE{background:#9CA3AF;color:#111827;border-color:#9CA3AF;}
     .actions-row a{color:#2563eb;text-decoration:none;font-weight:600;}
     .actions-row a:hover{text-decoration:underline;}
+    .device-compact{display:flex;flex-direction:column;gap:2px;}
+    .device-compact .device-title{margin:0;font-weight:700;color:#111827;}
+    .device-compact .device-serial{margin:0;color:#64748b;font-size:13px;}
     @media (max-width:1100px){
       form button,.btn,.btn-ghost{width:100%;justify-content:center;display:inline-flex;}
     }
@@ -130,12 +133,21 @@
             </td>
             <td>
               {% if o.device_list %}
-                {% for device in o.device_list %}
-                  <div>
-                    {{ device.brand }} {{ device.model }}
-                    {% if device.serial %}<div class="muted">Serie: {{ device.serial }}</div>{% endif %}
-                  </div>
-                {% endfor %}
+                {% with device_count=o.device_list|length %}
+                  {% with first_device=o.device_list.0 %}
+                    <div class="device-compact">
+                      <div class="device-title">{{ first_device.brand }} {{ first_device.model }}</div>
+                      {% if first_device.serial %}
+                        <div class="device-serial">(Serie {{ first_device.serial }})</div>
+                      {% endif %}
+                    </div>
+                  {% endwith %}
+                  {% with extra_count=device_count|add:"-1" %}
+                    {% if extra_count > 0 %}
+                      <div class="muted" style="margin-top:4px;">+ {{ extra_count }} dispositivo{% if extra_count != 1 %}s{% endif %} mas</div>
+                    {% endif %}
+                  {% endwith %}
+                {% endwith %}
               {% else %}
                 <span class="muted">Sin dispositivos</span>
               {% endif %}

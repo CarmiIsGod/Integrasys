@@ -64,12 +64,13 @@
     .finance-row{display:flex;flex-direction:column;gap:4px;}
     .finance-row span{display:block;}
     .status-dot{width:10px;height:10px;border-radius:50%;background:var(--status-color,#94a3b8);}
-    .order-devices-list{display:flex;flex-direction:column;gap:12px;margin-top:10px;}
-    .order-device-card{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#f8fbff;}
-    .order-device-card .device-name{margin:0 0 4px;font-weight:700;}
-    .order-device-card .device-failure-label{margin:4px 0 2px;font-weight:400;color:#4b5563;}
-    .order-device-card .device-failure-text{margin:0;font-weight:400;white-space:pre-line;}
-    .order-device-card .device-extra{margin:6px 0 0;white-space:pre-wrap;}
+    .order-devices-list{display:flex;flex-direction:column;gap:10px;margin-top:10px;}
+    .device-block{padding:8px 0;border-top:1px solid #e5e7eb;}
+    .device-block:first-child{border-top:none;padding-top:0;}
+    .device-title{margin:0 0 4px;font-weight:700;}
+    .device-line{margin:2px 0;color:#1e293b;}
+    .device-label{font-weight:600;margin-right:6px;color:#111827;}
+    .device-text{white-space:pre-line;}
     @media (max-width:1100px){
       .btn,.btn-ghost,form.inline button{width:100%;text-align:center;}
     }
@@ -250,28 +251,32 @@
           {% if order_devices %}
             <div class="order-devices-list">
               {% for device in order_devices %}
-                <div class="order-device-card">
-                  <p class="device-name">
+                <div class="device-block">
+                  <div class="device-title">
                     <strong>{{ device.brand }} {{ device.model }}</strong>
                     {% if device.serial %}<span class="muted">(Serie {{ device.serial }})</span>{% endif %}
-                  </p>
-                  <p class="device-failure-label">Falla:</p>
-                  <p class="device-failure-text">
-                    {% if device.notes %}
-                      {{ device.notes }}
-                    {% else %}
-                      <span class="muted">Sin descripción capturada.</span>
-                    {% endif %}
-                  </p>
-                  {% if device.password_notes %}
-                    <p class="device-extra">
-                      <strong>Contraseña / PIN:</strong> {{ device.password_notes }}
-                    </p>
-                  {% endif %}
+                  </div>
+                  <div class="device-line">
+                    <span class="device-label">Falla:</span>
+                    <span class="device-text">
+                      {% if device.notes %}
+                        {{ device.notes }}
+                      {% else %}
+                        Falla no reportada.
+                      {% endif %}
+                    </span>
+                  </div>
                   {% if device.accessories_notes %}
-                    <p class="device-extra">
-                      <strong>Accesorios:</strong> {{ device.accessories_notes }}
-                    </p>
+                    <div class="device-line">
+                      <span class="device-label">Accesorios:</span>
+                      <span class="device-text">{{ device.accessories_notes }}</span>
+                    </div>
+                  {% endif %}
+                  {% if device.password_notes %}
+                    <div class="device-line">
+                      <span class="device-label">Contrasena / PIN:</span>
+                      <span class="device-text">{{ device.password_notes }}</span>
+                    </div>
                   {% endif %}
                 </div>
               {% endfor %}
