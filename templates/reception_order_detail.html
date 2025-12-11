@@ -146,6 +146,9 @@
                 {% csrf_token %}
                 <button type="submit" class="btn btn-ghost btn-full">Abrir servicio por garantía</button>
               </form>
+              {% if is_superuser or is_manager_user or can_assign %}
+                <button type="button" class="btn btn-ghost btn-full" id="reopen-toggle">Reabrir orden</button>
+              {% endif %}
             {% endif %}
             {% if is_manager_user and order.status != "CANC" %}
               <form method="post" action="{% url 'order_cancel' order.pk %}" style="width:100%;">
@@ -154,6 +157,19 @@
               </form>
             {% endif %}
           </div>
+          {% if order.status == "DONE" %}
+            {% if is_superuser or is_manager_user or can_assign %}
+              <form id="reopen-form" method="post" action="{% url 'order_reopen' order.pk %}" style="display:none;margin-top:8px;flex-direction:column;gap:8px;">
+                {% csrf_token %}
+                <label for="reopen-reason" style="font-weight:600;">Motivo de reapertura</label>
+                <textarea id="reopen-reason" name="reason" rows="3" required placeholder="Describe el motivo..."></textarea>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                  <button type="submit" class="btn btn-full" style="flex:1 1 150px;">Confirmar reapertura</button>
+                  <button type="button" class="btn btn-ghost btn-full" id="reopen-cancel" style="flex:1 1 150px;">Cancelar</button>
+                </div>
+              </form>
+            {% endif %}
+          {% endif %}
         </div>
         <div class="card order-card">
           <h2>Cliente y equipo</h2>
@@ -385,16 +401,17 @@
           <h2>Historial</h2>
           <div class="table-wrapper">
           <table>
-            <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Estado</th><th>Autor</th><th>Nota</th></tr></thead>
             <tbody>
               {% for h in history %}
                 <tr>
                   <td class="muted">{{ h.created_at|date:"Y-m-d H:i" }}</td>
                   <td>{{ h.get_status_display }}</td>
                   <td>{{ h.author|default:"-" }}</td>
+                  <td>{{ h.note|default:"-" }}</td>
                 </tr>
               {% empty %}
-                <tr><td colspan="3" style="text-align:center;padding:18px;">Sin historial.</td></tr>
+                <tr><td colspan="4" style="text-align:center;padding:18px;">Sin historial.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -403,5 +420,28 @@
       </section>
     </div>
   </main>
+  <script>
+    (function() {
+      var toggle = document.getElementById("reopen-toggle");
+      var form = document.getElementById("reopen-form");
+      var cancelBtn = document.getElementById("reopen-cancel");
+      var reasonInput = document.getElementById("reopen-reason");
+      if (toggle && form) {
+        toggle.addEventListener("click", function() {
+          form.style.display = "flex";
+          toggle.style.display = "none";
+          if (reasonInput) {
+            reasonInput.focus();
+          }
+        });
+      }
+      if (cancelBtn && form && toggle) {
+        cancelBtn.addEventListener("click", function() {
+          form.style.display = "none";
+          toggle.style.display = "inline-flex";
+        });
+      }
+    })();
+  </script>
 </body>
 </html>
